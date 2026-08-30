@@ -30,7 +30,9 @@ Rules:
   the path may not exist yet — first entry creates it)
 - `## Tools` section only if project tools exist. An unregistered tool
   does not exist for a cold agent
-- `head_commit` is the staleness stamp: sessions verify it against `HEAD`
-  before trusting snapshots; the stop hook nudges when it drifts
+- `head_commit` is the staleness stamp: artifacts are stale when commits
+  since it touch files *outside* `.artifacts/` — the artifact-stamping
+  commit itself never counts. Sessions verify before trusting snapshots;
+  lint warns and the stop hook nudges on drift
 - Lint cross-checks this table against `schemas/` and the filesystem in
   both directions
