@@ -1,19 +1,18 @@
 # State
-as_of: 2026-08-30 @ 0000000
+as_of: 2026-08-30 @ 62a0cc4db2d9
 
 ## Goal
 Ship v0.1 of adaptive-artifacts: a dual-platform extension that designs, enforces, and evolves per-project artifact systems.
 
 ## Now
-Extension core exists, wired project-locally: skills `adaptive-artifacts` (runtime), `init-artifacts`, `improve-artifacts`; primitives + seven presets; `tools/lint.py` and `tools/new_entry.py` (Python 3.8+, stdlib); session-start/stop hooks for Cursor and Claude Code (`.cursor/hooks.json`, `hooks/hooks.json`, `.claude-plugin/plugin.json`). README covers install and the Cursor bug that drops `sessionStart` `additional_context` — discovery is the rule pointer, not the hook. Not a git repo, so append-only lint and `head_commit` freshness are inert (`0000000` placeholder). No tests. This repo now dogfoods its own system: schemas, snapshots, and pointers written this session.
+Repo is git-backed (first commits this session), so append-only lint and manifest staleness are live. Test suite exists and passes: 22 tests in `tests/` covering `tools/lint.py` (required fields, budgets, manifest cross-checks, append-only for file and collection ledgers, archive moves, id gaps/dupes, staleness) and `tools/new_entry.py` (next-id, file append, snapshot refusal). Staleness semantics fixed: stale only when commits since `head_commit` touch files outside `.artifacts/` (see FRICTION.md #1). Extension core unchanged otherwise: three skills, primitives + presets, hooks wired for Cursor and Claude Code.
 
 ## Next
-1. Mechanical tests for `tools/lint.py` (required fields, budget, manifest cross-check, append-only once git exists, id gaps).
-2. Tests for `tools/new_entry.py`.
-3. `git init` so ledger append-only and manifest staleness actually run.
-4. Cross-session skill tests: routing to empty set, cold-read, resume-with-trap.
-5. Promote from project-local to user-wide / Claude plugin install after those survive.
+1. Routing smoke: trivial one-file task routes to no artifacts (fresh session).
+2. Cold-read: fresh session reconstructs position from artifacts only.
+3. Resume-with-trap: session 2 does not re-attempt a logged dead end.
+4. Drift check: State rewritten at session end without human reminder (hooks).
+5. User-wide Cursor install + Claude Code plugin load after the above pass.
 
 ## Open
-- Cursor `sessionStart` still drops `additional_context` (platform); stop hook works. Workaround is `.cursor/rules/artifacts.mdc`.
-- Not a git repository — `head_commit` is `0000000` until first commit.
+- Cursor `sessionStart` still drops `additional_context` (platform bug); discovery relies on `.cursor/rules/artifacts.mdc`, stop hook works.

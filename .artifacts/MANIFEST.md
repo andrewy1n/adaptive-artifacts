@@ -1,6 +1,6 @@
 # Artifact Manifest
 manifest_version: 2
-head_commit: 0000000
+head_commit: 62a0cc4db2d9
 updated: 2026-08-30
 
 ## Artifacts

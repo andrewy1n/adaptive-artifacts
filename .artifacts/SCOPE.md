@@ -1,5 +1,5 @@
 # Scope
-as_of: 2026-08-30 @ 0000000
+as_of: 2026-08-30 @ 62a0cc4db2d9
 
 ## What
 adaptive-artifacts is a Cursor and Claude Code extension that lets an agent design a project-specific artifact system from fixed primitives (disciplines, layouts, schema format, manifest, gates), freeze it as an in-repo schema registry, and enforce it with lint and session hooks. Agents continuing the work are the audience; humans review design sessions. Rationale: `IDEA.md`.

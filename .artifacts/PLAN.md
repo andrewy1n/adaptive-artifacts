@@ -1,5 +1,5 @@
 # Plan
-as_of: 2026-08-30 @ 0000000
+as_of: 2026-08-30 @ 62a0cc4db2d9
 
 ## Objective
 Validate v0.1 of the extension across session boundaries, then promote it from this repo's project-local wiring to something installable. Core (skills, primitives, presets, lint, hooks) already exists.
@@ -9,9 +9,9 @@ Dogfood on this repo first (the system using itself), then mechanical tests for 
 
 ## Items
 - [x] Dogfood init: `.artifacts/` designed, snapshots from present reality, discovery pointers planted
-- [ ] Tests for `tools/lint.py`: valid tree, missing required field, budget overrun, manifest/schema mismatch, append-only edit of a committed ledger entry, collection id duplicates/gaps
-- [ ] Tests for `tools/new_entry.py`: collection next-id, single-file append, refuse snapshots
-- [ ] `git init` so `head_commit` and append-only lint are live
+- [x] Tests for `tools/lint.py`: valid tree, missing required field, budget overrun, manifest/schema mismatch, append-only edit of a committed ledger entry, collection id duplicates/gaps, staleness semantics (18 tests)
+- [x] Tests for `tools/new_entry.py`: collection next-id, single-file append, refuse snapshots (4 tests)
+- [x] `git init` + first commits; `head_commit` and append-only lint live
 - [ ] Routing smoke: trivial one-file task routes to no artifacts
 - [ ] Cold-read: fresh session reconstructs position from artifacts only
 - [ ] Resume-with-trap: session 2 does not re-attempt a logged dead end
@@ -20,4 +20,4 @@ Dogfood on this repo first (the system using itself), then mechanical tests for 
 
 ## Decisions
 - Evidence and verification types omitted at init; add from presets unmodified when a non-automatable claim or named gate appears.
-- `head_commit` is `0000000` until the repo has git.
+- Staleness = commits since `head_commit` touching files outside `.artifacts/`; artifact-only commits never count (FRICTION.md #1, applied at extension level).
