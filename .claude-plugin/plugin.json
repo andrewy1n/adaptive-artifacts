@@ -1,0 +1,5 @@
+{
+  "name": "adaptive-artifacts",
+  "version": "0.1.0",
+  "description": "Agent-managed adaptive project artifacts: routed setup, session state, append-only failure/evidence ledgers, blinded verification, and friction-driven schema evolution, with session lifecycle hooks."
+}

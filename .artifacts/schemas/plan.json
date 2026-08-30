@@ -1,0 +1,14 @@
+{
+  "name": "plan",
+  "version": 1,
+  "purpose": "The work being built: breakdown, approach, open decisions",
+  "discipline": "snapshot",
+  "layout": "file",
+  "path": "PLAN.md",
+  "fields": [
+    { "name": "Objective", "required": true, "hint": "what this delivers, one paragraph" },
+    { "name": "Approach", "required": true, "hint": "chosen approach; one-line why if alternatives were live" },
+    { "name": "Items", "required": true, "hint": "breakdown with status markers [ ] [~] [x] [!]" },
+    { "name": "Decisions", "required": false, "hint": "open decisions with options; omit if none" }
+  ]
+}

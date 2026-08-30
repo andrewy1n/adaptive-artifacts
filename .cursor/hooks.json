@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "hooks": {
+    "sessionStart": [
+      {
+        "command": "hooks/session-start.py --cursor"
+      }
+    ],
+    "stop": [
+      {
+        "command": "hooks/session-stop.py --cursor",
+        "loop_limit": 1
+      }
+    ]
+  }
+}
