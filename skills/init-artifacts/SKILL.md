@@ -37,8 +37,8 @@ justifies:
 
 - Which types, from what roles: current position (state), boundaries
   (scope), the work itself (plan), dead ends (failures), grounding
-  (evidence), gates (verification), design feedback (friction — include it
-  whenever anything else exists)
+  (evidence), durable knowledge (findings), gates (verification), design
+  feedback (friction — include it whenever anything else exists)
 - Per type: fields tuned to the domain (an experiments ledger for research
   has different fields than a delivery failure log), discipline, layout,
   budgets

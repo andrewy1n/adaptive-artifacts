@@ -97,5 +97,5 @@ Primitives (fixed rules of the system):
 Presets (starting points for common types):
 [state](presets/state.md) · [scope](presets/scope.md) ·
 [plan](presets/plan.md) · [failures](presets/failures.md) ·
-[evidence](presets/evidence.md) · [verification](presets/verification.md) ·
-[friction](presets/friction.md)
+[evidence](presets/evidence.md) · [findings](presets/findings.md) ·
+[verification](presets/verification.md) · [friction](presets/friction.md)

@@ -19,9 +19,10 @@ skills/
   adaptive-artifacts/     # ambient runtime: session protocol, disciplines
     primitives/           # fixed rules: schema format, disciplines, layouts, manifest, gate
     presets/              # adaptable starting designs (state, scope, plan,
-                          #   failures, evidence, verification, friction)
+                          #   failures, evidence, findings, verification,
+                          #   friction)
   init-artifacts/         # explicit: the design session
-  improve-artifacts/      # explicit: project redesign / extension amendment
+  improve-artifacts/      # explicit: friction-driven project redesign
 tools/
   lint.py                 # validate .artifacts/ against its schema registry
   new_entry.py            # scaffold ledger entries from schemas
@@ -73,8 +74,8 @@ lint gate.
   freeze schemas, plant discovery pointers
 - normal work — `adaptive-artifacts` runtime applies ambiently; lint gates
   session end
-- `/improve-artifacts` — friction-driven redesign (project) or amendment
-  (extension)
+- `/improve-artifacts` — friction-driven redesign of a project's artifact
+  system (changing the extension itself is repo-local: `CONTRIBUTING.md`)
 - `python3 tools/lint.py --root <project>` / `python3 tools/new_entry.py
   <type> --title "..." --root <project>` — usable directly by any agent
 

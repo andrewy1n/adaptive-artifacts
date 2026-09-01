@@ -1,32 +1,27 @@
 ---
 name: improve-artifacts
 description: >-
-  Review friction ledgers and amend artifact designs at two levels: redesign
-  a project's artifact system (its schema registry and tools) or amend the
-  adaptive-artifacts extension itself (primitives, presets, shared tools).
-  Use only when the user explicitly asks to review friction, redesign or
-  amend artifact schemas, or invokes /improve-artifacts. Never used to edit
-  a project's artifact contents.
+  Review a project's friction ledger and redesign its artifact system:
+  amend the schema registry (.artifacts/schemas/) and project tools. Use
+  only when the user explicitly asks to review friction or redesign
+  artifact schemas, or invokes /improve-artifacts. Never used to edit a
+  project's artifact contents.
 disable-model-invocation: true
 ---
 
 # Improve Artifacts (redesign session)
 
-The only sanctioned path for changing artifact designs. Deliberately not
-ambient: amendment machinery stays invisible during normal work so rules
-cannot be rewritten mid-task.
+The only sanctioned path for changing a project's artifact design.
+Deliberately not ambient: redesign machinery stays invisible during normal
+work so rules cannot be rewritten mid-task.
 
-Two distinct levels — establish which one the user means first:
+Scope is the project: `.artifacts/schemas/*.json` and project tools,
+evidenced by the project's friction ledger and observed use. Friction with
+the extension itself (primitives, presets, shared tools, hooks) is out of
+scope — leave it in the friction ledger and tell the user it needs an
+upstream change to the extension.
 
-| Level | Target | Evidence |
-|---|---|---|
-| **Project redesign** | `.artifacts/schemas/*.json`, project tools | This project's friction ledger + observed use |
-| **Extension amendment** | `primitives/`, `presets/`, shared `tools/`, hooks | Friction across projects; recurring redesigns pointing the same way |
-
-A fix needed by one project is a redesign; the same fix appearing in every
-project's redesign is a preset or primitive amendment.
-
-## Shared rules (both levels)
+## Rules
 
 **Evidence-gated.** Every change cites friction entries or concrete
 observed use. "Field was boilerplate in 9 of 11 entries" is an argument;
@@ -43,7 +38,7 @@ missing information lands on a future session that can't complain.
 Snapshots may adopt a new schema at their next natural rewrite, not in a
 bulk pass.
 
-## Project redesign workflow
+## Workflow
 
 1. Read the project's friction ledger; group entries by design element,
    note frequency.
@@ -54,16 +49,3 @@ bulk pass.
 4. Refresh affected project tools; a write-tool that now emits lint-invalid
    output is broken until fixed.
 5. Run `tools/lint.py` — clean before finishing. Update the manifest.
-
-## Extension amendment workflow
-
-1. Gather evidence: friction ledgers the user points at, plus any recurring
-   project-redesign patterns.
-2. Propose changes to primitives (conventions — highest bar: lint and every
-   existing project depend on them), presets (defaults — moderate bar), or
-   shared tools/hooks (behavior — test before shipping).
-3. Human approves; apply in the extension repo. Convention changes require
-   a corresponding `tools/lint.py` change and a note in the affected
-   primitive doc — the spec and the enforcer move together or not at all.
-4. Note what changed at the bottom of the amended file (short changelog
-   line), so projects designed under older conventions are debuggable.
