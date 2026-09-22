@@ -297,6 +297,17 @@ class Store:
     def record_exists(self, record_type: str, record_id: str) -> bool:
         return self.record_path(record_type, record_id).is_file()
 
+    def delete_record_file(self, record_type: str, record_id: str) -> None:
+        """Remove a record file, e.g. to unwind a partially-written multi-record bundle.
+
+        Silent no-op if already absent, so rollback is safe to call twice.
+        """
+        self.record_path(record_type, record_id).unlink(missing_ok=True)
+
+    def delete_history_snapshot(self, record_type: str, record_id: str, revision: str) -> None:
+        """Companion to delete_record_file for append-only types' history snapshot."""
+        self.history_snapshot_path(record_type, record_id, revision).unlink(missing_ok=True)
+
     def read_record(self, record_type: str, record_id: str) -> dict[str, Any]:
         path = self.record_path(record_type, record_id)
         if not path.is_file():

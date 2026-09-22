@@ -1,13 +1,16 @@
-"""Regression tests for handoff._record_line's payload allowlisting.
+"""Regression tests for handoff._record_line's payload allowlisting and links.
 
 requires_payload is a strict allowlist: only the listed fields render, in the
-declared order, minus the skip set. Everything else in payload -- including a
-future top-level `body` field, which never even reaches payload -- must be
-absent from the rendered line.
+declared order, minus owner/subject (which already render elsewhere in the
+line). Everything else in payload -- including a future top-level `body`
+field, which never even reaches payload -- must be absent from the rendered
+line. Every rendered id is also a Markdown link to the record's file, and
+every generated view carries a deterministic store-state digest.
 """
 
 from __future__ import annotations
 
+import re
 import sys
 import unittest
 from pathlib import Path
@@ -19,6 +22,12 @@ sys.path.insert(0, str(RUNTIME))
 sys.path.insert(0, str(REPO_ROOT))
 
 from handoff import _record_line, generate_view  # noqa: E402
+from paths import type_dir_name  # noqa: E402
+from record_file import RECORD_SUFFIX  # noqa: E402
+
+
+def _expected_link(record_id: str, record_type: str = "demo:thing", store_root: str = ".artifacts") -> str:
+    return f"[{record_id}]({store_root}/records/{type_dir_name(record_type)}/{record_id}{RECORD_SUFFIX})"
 
 
 def _record(record_type="demo:thing", subject="the subject", record_id="rec-1", **payload):
@@ -60,54 +69,95 @@ class RecordLineAllowlistTests(unittest.TestCase):
         self.assertNotIn("secret_note", line)
         self.assertNotIn("do not print this", line)
 
-    def test_skip_fields_still_suppressed_even_if_requested(self):
-        record = _record(goal="ship it", scope="design/runtime", blocking=True, owner="agent")
-        role = _role(requires_payload=["scope", "blocking", "owner", "goal"])
+    def test_owner_and_subject_still_suppressed_from_summary_even_if_requested(self):
+        record = _record(goal="ship it", owner="agent")
+        # payload.subject is a distinct decoy from record["subject"] (the bullet
+        # label) -- it must not leak into the summary even when requested.
+        record["payload"]["subject"] = "payload-subject-value"
+        role = _role(requires_payload=["owner", "subject", "goal"])
         line = _record_line(record, role)
-        # scope/blocking/owner are always skipped from the summary body,
+        # owner/subject never appear twice: they already render elsewhere in
+        # the line (bullet label, id suffix), so the summary body drops them
         # even when a role explicitly lists them.
-        self.assertNotIn("design/runtime", line)
-        self.assertNotIn("True", line)
+        self.assertEqual(line.count("agent"), 1)
+        self.assertNotIn("payload-subject-value", line)
+        self.assertEqual(line.count("the subject"), 1)
         self.assertIn("ship it", line)
+
+    def test_scope_and_blocking_render_when_explicitly_requested(self):
+        record = _record(goal="ship it", scope="design/runtime", blocking=True)
+        role = _role(requires_payload=["scope", "blocking", "goal"])
+        line = _record_line(record, role)
+        # scope and blocking have no other home in the line, so an explicit
+        # request now overrides the old blanket skip -- unlike owner/subject.
+        self.assertIn("design/runtime", line)
+        self.assertIn("True", line)
+        self.assertIn("ship it", line)
+
+    def test_scope_not_requested_still_absent(self):
+        record = _record(goal="ship it", scope="design/runtime")
+        role = _role(requires_payload=["goal"])
+        line = _record_line(record, role)
+        self.assertIn("ship it", line)
+        self.assertNotIn("design/runtime", line)
 
     def test_owner_still_rendered_in_owner_id_position(self):
         record = _record(goal="ship it", owner="agent")
         role = _role(requires_payload=["goal"])
         line = _record_line(record, role)
-        self.assertIn("_(owner: agent, id: rec-1)_", line)
+        self.assertIn(f"_(owner: agent, id: {_expected_link('rec-1')})_", line)
 
     def test_owner_with_no_summary_falls_back_to_plain_owner_line(self):
         record = _record(owner="agent")
-        role = _role(requires_payload=["scope"])  # scope is skipped -> empty summary
+        role = _role(requires_payload=["scope"])  # scope has no value on this record -> empty summary
         line = _record_line(record, role)
-        self.assertEqual(line, "- the subject _(owner: agent, id: rec-1)_")
+        self.assertEqual(line, f"- the subject _(owner: agent, id: {_expected_link('rec-1')})_")
 
-    def test_empty_none_bool_fields_suppressed(self):
+    def test_empty_and_none_fields_suppressed_but_requested_bool_renders(self):
         record = _record(goal="ship it", note="", flag=None, active=True)
         role = _role(requires_payload=["goal", "note", "flag", "active"])
         line = _record_line(record, role)
         self.assertIn("ship it", line)
-        self.assertNotIn("True", line)
-        # Only "ship it" should remain as the summary body.
-        self.assertIn("**the subject**: ship it ", line)
+        # An explicitly requested bool now renders like any other requested
+        # field -- suppressing it silently would recreate the "renders
+        # nothing" bug this allowlist override is meant to fix.
+        self.assertIn("ship it; True", line)
 
     def test_no_requires_payload_renders_nothing_but_subject_and_id(self):
         record = _record(goal="ship it", scope="design/runtime", note="lots of stuff")
         role = _role()  # no requires_payload key at all
         line = _record_line(record, role)
-        self.assertEqual(line, "- the subject _(id: rec-1)_")
+        self.assertEqual(line, f"- the subject _(id: {_expected_link('rec-1')})_")
 
     def test_empty_requires_payload_list_also_renders_nothing_but_subject_and_id(self):
         record = _record(goal="ship it", note="lots of stuff")
         role = _role(requires_payload=[])
         line = _record_line(record, role)
-        self.assertEqual(line, "- the subject _(id: rec-1)_")
+        self.assertEqual(line, f"- the subject _(id: {_expected_link('rec-1')})_")
 
     def test_no_summary_and_no_owner_falls_back_to_bare_subject_line(self):
         record = _record()
         role = _role(requires_payload=["goal"])
         line = _record_line(record, role)
-        self.assertEqual(line, "- the subject _(id: rec-1)_")
+        self.assertEqual(line, f"- the subject _(id: {_expected_link('rec-1')})_")
+
+    def test_id_link_is_relative_not_absolute(self):
+        record = _record(goal="ship it")
+        role = _role(requires_payload=["goal"])
+        line = _record_line(record, role)
+        match = re.search(r"id: \[rec-1\]\(([^)]+)\)", line)
+        self.assertIsNotNone(match)
+        link_target = match.group(1)
+        self.assertFalse(link_target.startswith("/"))
+        self.assertTrue(link_target.endswith(f"rec-1{RECORD_SUFFIX}"))
+        self.assertIn("records/demo__thing/", link_target)
+
+    def test_id_link_honors_custom_store_root(self):
+        record = _record(goal="ship it")
+        role = _role(requires_payload=["goal"])
+        line = _record_line(record, role, store_root="somewhere/else")
+        self.assertIn(_expected_link("rec-1", store_root="somewhere/else"), line)
+        self.assertNotIn(".artifacts", line)
 
     def test_large_body_never_leaks_into_rendered_line(self):
         record = _record(goal="ship it", scope="design/runtime")
@@ -149,6 +199,52 @@ class GenerateViewGroupingAndHeadingsTests(unittest.TestCase):
         contract = _contract("demo:view", [role])
         markdown = generate_view(contract, "demo:view", [])
         self.assertIn("_No matching records._", markdown)
+
+
+class StoreStateProvenanceTests(unittest.TestCase):
+    def _view(self, records):
+        role = _role(name="thing", requires_payload=["goal"])
+        contract = _contract("demo:view", [role])
+        return generate_view(contract, "demo:view", records)
+
+    def _digest_line(self, markdown):
+        return next(line for line in markdown.splitlines() if line.startswith("> Store state:"))
+
+    def test_store_state_marker_present(self):
+        markdown = self._view([_record(goal="ship it")])
+        self.assertTrue(any(line.startswith("> Store state:") for line in markdown.splitlines()))
+
+    def test_store_state_marker_deterministic_on_unchanged_store(self):
+        records = [_record(record_id="rec-a", goal="ship it")]
+        first = self._digest_line(self._view(records))
+        second = self._digest_line(self._view([_record(record_id="rec-a", goal="ship it")]))
+        self.assertEqual(first, second)
+
+    def test_store_state_marker_changes_when_a_record_changes(self):
+        before = self._digest_line(self._view([_record(record_id="rec-a", goal="ship it")]))
+        after = self._digest_line(self._view([_record(record_id="rec-a", goal="ship it later")]))
+        self.assertNotEqual(before, after)
+
+    def test_store_state_marker_stable_regardless_of_record_order(self):
+        a = _record(record_id="rec-a", goal="do a")
+        b = _record(record_id="rec-b", goal="do b")
+        forward = self._digest_line(self._view([a, b]))
+        backward = self._digest_line(self._view([b, a]))
+        self.assertEqual(forward, backward)
+
+    def test_store_state_marker_ignores_non_contributing_records(self):
+        # A record of a type/selection this view doesn't render shouldn't
+        # move the digest -- it can't affect this view's content.
+        base = [_record(record_id="rec-a", goal="ship it")]
+        unrelated = _record(record_type="other:thing", record_id="rec-z", goal="irrelevant")
+        without = self._digest_line(self._view(base))
+        with_unrelated = self._digest_line(self._view(base + [unrelated]))
+        self.assertEqual(without, with_unrelated)
+
+    def test_store_state_marker_is_a_plain_digest_not_a_timestamp(self):
+        digest_line = self._digest_line(self._view([_record(goal="ship it")]))
+        value = digest_line.split("Store state: ", 1)[1]
+        self.assertRegex(value, r"^sha256:[0-9a-f]{64}$")
 
 
 if __name__ == "__main__":

@@ -34,6 +34,7 @@ from contract import (
 )
 from git_backend import GitContextError, assert_git_context
 from handoff import generate_all_views, generate_handoff, generate_view
+from query import QueryError, compile_grep, parse_where, record_matches, summarize
 from store import (
     ContractBindingError,
     PartialStoreError,
@@ -214,6 +215,15 @@ def _persist_new(store: Store, record_def: dict[str, Any], record: dict[str, Any
     if is_append_only(record_def):
         store.archive_history(stored)
     return stored
+
+
+def _view_store_root(store: Store) -> str:
+    """Store root as views should print it: repo-relative when it is inside the cwd."""
+    root = store.root.resolve()
+    try:
+        return root.relative_to(Path.cwd().resolve()).as_posix()
+    except ValueError:
+        return root.as_posix()
 
 
 def _safe_out_path(store: Store, out: str) -> Path:
@@ -504,13 +514,26 @@ def cmd_get(args: argparse.Namespace) -> int:
 def cmd_list(args: argparse.Namespace) -> int:
     try:
         store, _contract = _open_store(args)
-        records = store.list_records(record_type=args.type, lifecycle_state=args.state)
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
+    try:
+        payload_filters = parse_where(args.where)
+        grep = compile_grep(args.grep)
+    except QueryError as exc:
+        _emit_json({"error": "invalid_query", "message": str(exc)})
+        return EXIT_ERROR
+    try:
+        records = store.list_records(record_type=args.type, lifecycle_state=args.state)
     except StoreError as exc:
         _emit_json({"error": "store", "message": str(exc)})
         return EXIT_ERROR
-    _emit_json({"records": records, "count": len(records)})
+    matched = [
+        record
+        for record in records
+        if record_matches(record, payload_filters=payload_filters, subject=args.subject, grep=grep)
+    ]
+    out_records = matched if args.full else [summarize(record, grep=grep) for record in matched]
+    _emit_json({"records": out_records, "count": len(matched)})
     return EXIT_OK
 
 
@@ -670,6 +693,36 @@ def _capture_create_order(bundle: dict[str, Any]) -> list[str]:
     return ordered
 
 
+class _CaptureFailure(Exception):
+    """Carries a failed part's error payload out of the create loop so the
+    caller can roll back whatever the bundle already persisted before
+    reporting it -- see _rollback_capture."""
+
+    def __init__(self, payload: dict[str, Any], exit_code: int):
+        super().__init__(payload.get("message") or payload.get("error"))
+        self.payload = payload
+        self.exit_code = exit_code
+
+
+def _rollback_capture(
+    store: Store, defs: dict[str, Any], created: dict[str, list[dict[str, Any]]]
+) -> None:
+    """Undo every record this capture call persisted before it failed.
+
+    Called while write_lock() is still held, so nothing else can observe the
+    partial state in between. This is a best-effort compensating delete, not
+    a transaction: a hard crash (not a raised exception) between two of the
+    already-written files is still possible and is not covered.
+    """
+    for record_type, records in created.items():
+        record_def = defs.get(record_type)
+        append_only = record_def is not None and is_append_only(record_def)
+        for record in records:
+            if append_only:
+                store.delete_history_snapshot(record_type, record["id"], record["revision"])
+            store.delete_record_file(record_type, record["id"])
+
+
 def cmd_capture(args: argparse.Namespace) -> int:
     try:
         store, contract = _open_store(args)
@@ -688,12 +741,12 @@ def cmd_capture(args: argparse.Namespace) -> int:
     if not isinstance(parts, list):
         _emit_json({"error": "invalid_records", "message": "records must be a JSON list"})
         return EXIT_ERROR
-    by_type: dict[str, dict[str, Any]] = {}
+    by_type: dict[str, list[dict[str, Any]]] = {}
     for part in parts:
         if not isinstance(part, dict) or "type" not in part:
             _emit_json({"error": "invalid_records", "message": "each record needs type"})
             return EXIT_ERROR
-        by_type[part["type"]] = part
+        by_type.setdefault(part["type"], []).append(part)
     expected = set(bundle["records"])
     if set(by_type) != expected:
         _emit_json(
@@ -704,64 +757,84 @@ def cmd_capture(args: argparse.Namespace) -> int:
         )
         return EXIT_VALIDATION
     defs = record_defs(contract)
-    created: dict[str, dict[str, Any]] = {}
+    created: dict[str, list[dict[str, Any]]] = {}
     try:
         with store.write_lock():
-            for record_type in _capture_create_order(bundle):
-                part = by_type[record_type]
-                payload = part.get("payload") or {}
-                subject = part.get("subject") or payload.get("subject")
-                if not subject:
-                    _emit_json({"error": "missing_subject", "type": record_type})
-                    return EXIT_ERROR
-                body_value = part.get("body", "")
-                if body_value is None:
-                    body_value = ""
-                if not isinstance(body_value, str):
-                    _emit_json(
-                        {"error": "invalid_records", "message": f"body for {record_type} must be a string"}
-                    )
-                    return EXIT_ERROR
-                relationships: dict[str, list[str]] = {}
-                for link in bundle.get("relationships") or []:
-                    if link["from"] != record_type:
-                        continue
-                    target = created.get(link["to"])
-                    if target is None:
-                        _emit_json(
-                            {
-                                "error": "bundle_order",
-                                "message": f"cannot link {record_type} before {link['to']}",
-                            }
+            try:
+                for record_type in _capture_create_order(bundle):
+                    for part in by_type[record_type]:
+                        payload = part.get("payload") or {}
+                        subject = part.get("subject") or payload.get("subject")
+                        if not subject:
+                            raise _CaptureFailure(
+                                {"error": "missing_subject", "type": record_type}, EXIT_ERROR
+                            )
+                        body_value = part.get("body", "")
+                        if body_value is None:
+                            body_value = ""
+                        if not isinstance(body_value, str):
+                            raise _CaptureFailure(
+                                {
+                                    "error": "invalid_records",
+                                    "message": f"body for {record_type} must be a string",
+                                },
+                                EXIT_ERROR,
+                            )
+                        relationships: dict[str, list[str]] = {}
+                        for link in bundle.get("relationships") or []:
+                            if link["from"] != record_type:
+                                continue
+                            targets = created.get(link["to"]) or []
+                            if not targets:
+                                raise _CaptureFailure(
+                                    {
+                                        "error": "bundle_order",
+                                        "message": f"cannot link {record_type} before {link['to']}",
+                                    },
+                                    EXIT_ERROR,
+                                )
+                            for target in targets:
+                                relationships.setdefault(link["type"], []).append(target["id"])
+                        record_id = store.new_id()
+                        record = _base_record(
+                            record_type,
+                            defs[record_type],
+                            subject=subject,
+                            stewardship=part.get("steward") or "agent",
+                            payload=payload,
+                            record_id=record_id,
+                            relationships=relationships or None,
+                            body=body_value,
                         )
-                        return EXIT_ERROR
-                    relationships.setdefault(link["type"], []).append(target["id"])
-                record_id = store.new_id()
-                record = _base_record(
-                    record_type,
-                    defs[record_type],
-                    subject=subject,
-                    stewardship=part.get("steward") or "agent",
-                    payload=payload,
-                    record_id=record_id,
-                    relationships=relationships or None,
-                    body=body_value,
-                )
-                known_ids = {item["id"] for item in store.iter_records()} | {record_id}
-                try:
-                    validate_record(contract, record, known_ids)
-                except ValidationError as exc:
-                    _emit_json({"error": "validation", "message": str(exc)})
-                    return EXIT_VALIDATION
-                created[record_type] = _persist_new(store, defs[record_type], record)
+                        known_ids = {item["id"] for item in store.iter_records()} | {record_id}
+                        try:
+                            validate_record(contract, record, known_ids)
+                        except ValidationError as exc:
+                            raise _CaptureFailure(
+                                {"error": "validation", "message": str(exc)}, EXIT_VALIDATION
+                            ) from exc
+                        stored = _persist_new(store, defs[record_type], record)
+                        created.setdefault(record_type, []).append(stored)
+            except _CaptureFailure as exc:
+                _rollback_capture(store, defs, created)
+                _emit_json(exc.payload)
+                return exc.exit_code
+            except StoreError as exc:
+                _rollback_capture(store, defs, created)
+                _emit_json({"error": "store", "message": str(exc)})
+                return EXIT_ERROR
     except StoreLockError as exc:
         _emit_json({"error": "locked", "message": str(exc)})
         return EXIT_ERROR
+    records_out = {
+        record_type: (records[0] if len(records) == 1 else records)
+        for record_type, records in created.items()
+    }
     _emit_json(
         {
             "status": "captured",
             "bundle": bundle["id"],
-            "records": created,
+            "records": records_out,
         }
     )
     return EXIT_OK
@@ -774,7 +847,7 @@ def cmd_handoff(args: argparse.Namespace) -> int:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
     try:
-        markdown = generate_handoff(contract, records)
+        markdown = generate_handoff(contract, records, store_root=_view_store_root(store))
     except ContractError as exc:
         _emit_json({"error": "view_not_found", "message": str(exc)})
         return EXIT_VALIDATION
@@ -801,13 +874,15 @@ def cmd_view(args: argparse.Namespace) -> int:
     if args.id:
         try:
             view_by_id(contract, args.id)
-            markdown = generate_view(contract, args.id, records)
+            markdown = generate_view(
+                contract, args.id, records, store_root=_view_store_root(store)
+            )
         except ContractError as exc:
             _emit_json({"error": "view_not_found", "message": str(exc)})
             return EXIT_VALIDATION
         rendered = {args.id: markdown}
     else:
-        rendered = generate_all_views(contract, records)
+        rendered = generate_all_views(contract, records, store_root=_view_store_root(store))
         markdown = "\n---\n\n".join(rendered.values())
     if args.out:
         try:
@@ -848,7 +923,7 @@ def cmd_hook_start(args: argparse.Namespace) -> int:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
-    views = generate_all_views(contract, records)
+    views = generate_all_views(contract, records, store_root=_view_store_root(store))
     handoff_id = next((view_id for view_id in views if view_id.endswith(":handoff")), None)
     _emit_json(
         {
@@ -998,6 +1073,30 @@ def build_parser() -> argparse.ArgumentParser:
     p_list = sub.add_parser("list", help="List records")
     p_list.add_argument("--type")
     p_list.add_argument("--state")
+    p_list.add_argument(
+        "--where",
+        action="append",
+        default=[],
+        metavar="payload.<field>=<value>",
+        help=(
+            "Filter by payload field equality (repeatable; AND semantics). "
+            "The value is JSON-decoded when possible (true/42/\"x\"), otherwise "
+            "compared as a literal string."
+        ),
+    )
+    p_list.add_argument(
+        "--subject",
+        help="Match records whose subject equals this value, or starts with it (exact-or-prefix)",
+    )
+    p_list.add_argument(
+        "--grep",
+        help="Case-insensitive regex match against the record body (not frontmatter fields)",
+    )
+    p_list.add_argument(
+        "--full",
+        action="store_true",
+        help="Emit full records (including body) instead of the default compact summary",
+    )
     p_list.set_defaults(func=cmd_list)
 
     p_handoff = sub.add_parser("handoff", help="Generate derived handoff markdown")
