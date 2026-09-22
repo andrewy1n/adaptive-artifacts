@@ -73,7 +73,9 @@ def _record_line(
             continue
         bits.append(str(value))
     summary = "; ".join(bits)
-    owner = payload.get("owner")
+    # owner renders in its own slot rather than the summary, but still only when
+    # the role asked for it -- the allowlist has no exceptions.
+    owner = payload.get("owner") if "owner" in requested else None
     extra = f"owner: {owner}, " if owner else ""
     link = f"[{record['id']}]({_record_relative_path(record, store_root)})"
     if summary:
@@ -97,6 +99,25 @@ def _store_state_digest(records: list[dict[str, Any]]) -> str:
     """
     revisions = sorted(record.get("revision") or compute_revision(record) for record in records)
     return canonical_digest(revisions)
+
+
+def _digest_inputs(
+    contributing: dict[str, dict[str, Any]],
+    groups: dict[str, Any],
+    order_field: str | None,
+    records: list[dict[str, Any]],
+) -> list[dict[str, Any]]:
+    """Records whose state can change this view's output.
+
+    Under order_by that includes the grouping records supplying the ordinals,
+    which no role selects but which decide the order groups render in.
+    """
+    inputs = dict(contributing)
+    if order_field:
+        for record in records:
+            if record.get("subject") in groups:
+                inputs.setdefault(record["id"], record)
+    return list(inputs.values())
 
 
 def _group_ordinal(
@@ -167,7 +188,7 @@ def generate_view(
         f"# {_title(view_id)}",
         "",
         "> Derived view — not authoritative. Edit underlying records, not this file.",
-        f"> Store state: {_store_state_digest(list(contributing.values()))}",
+        f"> Store state: {_store_state_digest(_digest_inputs(contributing, groups, order_field, records))}",
         "",
     ]
     if not groups:

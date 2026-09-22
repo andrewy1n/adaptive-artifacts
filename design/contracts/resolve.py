@@ -282,6 +282,13 @@ def check_trait_incompat(names: list[str], traits: dict, label: str) -> None:
         clash = have & forbidden
         if clash:
             raise ResolveError(f"{label}: traits {name} incompatible with {sorted(clash)}")
+    # A record composes exactly one lifecycle. Derive that from the traits rather
+    # than trusting every pair to be hand-listed in incompatible_with.
+    lifecycle_traits = sorted(name for name in have if traits[name].get("lifecycle"))
+    if len(lifecycle_traits) > 1:
+        raise ResolveError(
+            f"{label}: traits {lifecycle_traits} each supply a lifecycle; a record may have only one"
+        )
 
 
 def check_record_definition(record: dict, namespace: str, *, experimental: bool = False) -> None:

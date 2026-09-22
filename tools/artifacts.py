@@ -213,7 +213,12 @@ def _parse_rels(raw: list[str] | None) -> dict[str, list[str]]:
 def _persist_new(store: Store, record_def: dict[str, Any], record: dict[str, Any]) -> dict[str, Any]:
     stored = store.create_record(record)
     if is_append_only(record_def):
-        store.archive_history(stored)
+        try:
+            store.archive_history(stored)
+        except Exception:
+            # The caller never learns this id, so it could never roll the file back.
+            store.delete_record_file(stored["record_type"], stored["id"])
+            raise
     return stored
 
 
@@ -823,6 +828,11 @@ def cmd_capture(args: argparse.Namespace) -> int:
                 _rollback_capture(store, defs, created)
                 _emit_json({"error": "store", "message": str(exc)})
                 return EXIT_ERROR
+            except Exception:
+                # Any failure leaving records behind must roll back, not just the
+                # ones we anticipated -- an OSError mid-bundle orphans them otherwise.
+                _rollback_capture(store, defs, created)
+                raise
     except StoreLockError as exc:
         _emit_json({"error": "locked", "message": str(exc)})
         return EXIT_ERROR

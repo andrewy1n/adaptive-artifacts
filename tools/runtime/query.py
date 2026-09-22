@@ -66,9 +66,26 @@ def compile_grep(pattern: str | None) -> Pattern[str] | None:
         raise QueryError(f"invalid --grep pattern {pattern!r}: {exc}") from exc
 
 
+_MISSING = object()
+
+
+def _same(actual: Any, expected: Any) -> bool:
+    # bool is an int subclass, so plain == makes 1 match True. Keep them distinct.
+    if isinstance(actual, bool) != isinstance(expected, bool):
+        return False
+    return actual == expected
+
+
 def payload_matches(record: dict[str, Any], filters: list[tuple[str, Any]]) -> bool:
     payload = record.get("payload") or {}
-    return all(payload.get(field) == value for field, value in filters)
+    for field, value in filters:
+        actual = payload.get(field, _MISSING)
+        if actual is _MISSING:
+            # An absent field is not a null field; =null must not match "never set".
+            return False
+        if not _same(actual, value):
+            return False
+    return True
 
 
 def subject_matches(record: dict[str, Any], subject: str | None) -> bool:

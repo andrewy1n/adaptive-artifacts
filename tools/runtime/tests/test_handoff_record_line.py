@@ -106,15 +106,22 @@ class RecordLineAllowlistTests(unittest.TestCase):
         self.assertIn("ship it", line)
         self.assertNotIn("design/runtime", line)
 
-    def test_owner_still_rendered_in_owner_id_position(self):
+    def test_requested_owner_rendered_in_owner_id_position(self):
         record = _record(goal="ship it", owner="agent")
-        role = _role(requires_payload=["goal"])
+        role = _role(requires_payload=["goal", "owner"])
         line = _record_line(record, role)
         self.assertIn(f"_(owner: agent, id: {_expected_link('rec-1')})_", line)
 
+    def test_unrequested_owner_is_suppressed_like_any_other_field(self):
+        record = _record(goal="ship it", owner="agent")
+        role = _role(requires_payload=["goal"])
+        line = _record_line(record, role)
+        self.assertNotIn("agent", line)
+
     def test_owner_with_no_summary_falls_back_to_plain_owner_line(self):
         record = _record(owner="agent")
-        role = _role(requires_payload=["scope"])  # scope has no value on this record -> empty summary
+        # scope is requested but has no value on this record -> empty summary
+        role = _role(requires_payload=["scope", "owner"])
         line = _record_line(record, role)
         self.assertEqual(line, f"- the subject _(owner: agent, id: {_expected_link('rec-1')})_")
 

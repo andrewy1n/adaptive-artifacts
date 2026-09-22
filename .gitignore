@@ -1,2 +1,6 @@
 __pycache__/
 *.pyc
+
+# Operational store state, never record data. Committing it would make every
+# lock acquisition look like a modification of a committed store path.
+.write.lock

@@ -133,6 +133,9 @@ class Store:
                 handle.seek(0)
                 handle.truncate()
                 handle.flush()
+                # Leave nothing behind to be swept into a commit by `git add -A`.
+                with contextlib.suppress(OSError):
+                    path.unlink()
                 fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
         finally:
             handle.close()
@@ -325,6 +328,18 @@ class Store:
         else:
             type_dirs = sorted(p for p in self.records_dir.iterdir() if p.is_dir())
         for type_dir in type_dirs:
+            stray = sorted(
+                p.name
+                for p in type_dir.glob("*")
+                if p.is_file() and p.suffix != RECORD_SUFFIX
+            )
+            if stray:
+                # Silently skipping these would report an unmigrated store as empty,
+                # which reads as "valid" everywhere downstream.
+                raise StoreError(
+                    f"unrecognized record files in {type_dir}: {stray}; "
+                    f"expected {RECORD_SUFFIX} (run migrate_records_to_markdown.py)"
+                )
             for path in sorted(type_dir.glob(RECORD_GLOB)):
                 record = _load_record_file(path)
                 if record.get("revision") != compute_revision(record):

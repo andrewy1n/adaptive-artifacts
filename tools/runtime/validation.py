@@ -282,6 +282,19 @@ def _git_head_exists(repo_root: Path) -> bool:
     return result is not None and result.returncode == 0
 
 
+def _meta_contract_rel(store_root: Path, repo_root: Path) -> str:
+    """Repo-relative path of the contract meta.json pins, or "" when unresolvable."""
+    try:
+        meta = json.loads((store_root / "meta.json").read_text())
+        contract_ref = meta["contract"]
+        base = store_root.resolve().parent
+        if Path(contract_ref).is_absolute():
+            return ""
+        return (base / contract_ref).resolve().relative_to(repo_root.resolve()).as_posix()
+    except (OSError, ValueError, KeyError, TypeError, json.JSONDecodeError):
+        return ""
+
+
 def _meta_digest_mismatch(store_root: Path, meta_path: Path) -> str | None:
     """Check whether a modified meta.json is a sanctioned contract re-pin.
 
@@ -308,9 +321,17 @@ def _meta_digest_mismatch(store_root: Path, meta_path: Path) -> str | None:
         return "meta.json is missing contract_digest"
     if not isinstance(contract_ref, str) or not contract_ref:
         return "meta.json is missing its contract reference"
-    # meta.json's "contract" field is stored relative to store_root's parent
-    # (see Store.init); an absolute contract_ref resolves to itself either way.
-    contract_path = store_root.resolve().parent / contract_ref
+    # meta.json's "contract" field is stored relative to store_root's parent (see
+    # Store.init). Digest self-consistency only means something if the file it
+    # points at is in the tree under review: an absolute or escaping ref lets a
+    # writer aim meta.json at attacker-controlled bytes and self-compute a digest
+    # that matches, which would pass this check while pointing nowhere auditable.
+    base = store_root.resolve().parent
+    if Path(contract_ref).is_absolute():
+        return f"meta.json contract reference must be relative, got {contract_ref!r}"
+    contract_path = (base / contract_ref).resolve()
+    if not contract_path.is_relative_to(base):
+        return f"meta.json contract reference escapes the project: {contract_ref!r}"
     try:
         contract_text = contract_path.read_text()
     except OSError as exc:
@@ -383,7 +404,10 @@ def validate_immutability(store_root: Path, errors: list[str]) -> None:
         if status.startswith("A"):
             continue
         offending = parts[1] if len(parts) > 1 else line
-        if offending == meta_rel and not status.startswith("D"):
+        # A contract swap rewrites meta.json and the resolved contract together.
+        # Both are sanctioned only while the pair stays self-consistent.
+        pinned = {meta_rel, _meta_contract_rel(store_root, repo_root)}
+        if offending in pinned and not status.startswith("D"):
             detail = _meta_digest_mismatch(store_root, store_root / "meta.json")
             if detail is None:
                 continue
@@ -400,6 +424,10 @@ def load_records_for_validation(store_root: Path, errors: list[str]) -> list[dic
     if not records_dir.is_dir():
         return []
     records: list[dict[str, Any]] = []
+    for path in sorted(records_dir.rglob("*")):
+        # Skipping these quietly would validate an unmigrated store as clean.
+        if path.is_file() and path.suffix != RECORD_SUFFIX:
+            errors.append(f"unrecognized record file (expected {RECORD_SUFFIX}): {path}")
     for path in sorted(records_dir.rglob(RECORD_GLOB)):
         try:
             record = load_record(path.read_text(), path)
