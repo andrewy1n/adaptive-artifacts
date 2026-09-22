@@ -4,11 +4,12 @@
     "name": "andrewy1n",
     "email": "andrewyingo@gmail.com"
   },
+  "description": "Experimental unpublished adaptive-artifacts: contracts, typed records, derived views, session hooks.",
   "plugins": [
     {
       "name": "adaptive-artifacts",
       "source": "./",
-      "description": "Agent-designed project artifacts: contracts, typed records, derived views, session hooks."
+      "description": "Experimental 0.1.0. Agent-designed project artifacts: contracts, typed records, derived views, session hooks."
     }
   ]
 }

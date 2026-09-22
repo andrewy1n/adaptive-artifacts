@@ -63,9 +63,14 @@ state.
 
 ## Install
 
-This git tree is the source. Sync a **clean payload** (no `.artifacts/`
-store) and install that directory — do not point Cursor or Claude at this
-repo as the plugin root.
+Unpublished experimental **0.1.0**. Not in Anthropic's official plugin
+list.
+
+- **Cursor** — sync a clean payload (no `.artifacts/` store) into
+  `~/.cursor/plugins/local/`; do not point Cursor at this git tree as
+  the plugin root.
+- **Claude Code** — add this GitHub repo as a marketplace, then install
+  `adaptive-artifacts@adaptive-artifacts` (two steps; see below).
 
 ### Cursor (local)
 
@@ -99,13 +104,26 @@ gate works today.
 
 ### Claude Code
 
-Marketplace-add the **payload directory** (the sync destination), not
-this git repo:
+Two steps: add the marketplace, then install the plugin. It is **not**
+in Anthropic's official marketplace — install fails with "not found"
+if you skip the add.
+
+```bash
+claude plugin marketplace add andrewy1n/adaptive-artifacts
+claude plugin install adaptive-artifacts@adaptive-artifacts -y
+```
+
+The install id is `plugin@marketplace` → `adaptive-artifacts@adaptive-artifacts`.
+
+Local payload (after `scripts/sync-plugin.sh`) works the same way:
 
 ```bash
 claude plugin marketplace add ~/.cursor/plugins/local/adaptive-artifacts
 claude plugin install adaptive-artifacts@adaptive-artifacts -y
 ```
+
+If a marketplace named `adaptive-artifacts` already points somewhere
+else, remove it first: `claude plugin marketplace remove adaptive-artifacts`.
 
 Claude puts plugin `bin/` on PATH. For Cursor-only use, keep the
 `~/.local/bin` symlink above.
