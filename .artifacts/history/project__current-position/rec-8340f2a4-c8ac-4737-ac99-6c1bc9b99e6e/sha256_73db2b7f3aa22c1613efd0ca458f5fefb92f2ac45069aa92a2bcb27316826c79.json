@@ -1,0 +1,24 @@
+{
+  "id": "rec-8340f2a4-c8ac-4737-ac99-6c1bc9b99e6e",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "v0.2 design is pattern primitives plus optional family starters. design-artifacts declares pattern types; resolve.py compiles them through traits. ParcelPipe fixture has project work-item/acceptance/check-run. Catalog 0.5.0 unchanged.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-b3644450-42b1-4c38-ad1a-b3214bad1e31"
+    ]
+  },
+  "revision": "sha256:73db2b7f3aa22c1613efd0ca458f5fefb92f2ac45069aa92a2bcb27316826c79",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-04T23:22:20+00:00"
+  }
+}

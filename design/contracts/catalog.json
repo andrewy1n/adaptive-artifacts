@@ -1,0 +1,13 @@
+{
+  "version": "0.6.0",
+  "status": "experimental",
+  "project_design_format": "0.3.0",
+  "resolved_contract_format": "0.3.0",
+  "traits_version": "0.3.0",
+  "backends_version": "0.4.0",
+  "baseline_backend_capabilities": ["stable_ids", "read", "list"],
+  "notes": [
+    "0.6.0: Capability families removed. Projects declare records, views, and bundles. source_lock covers catalog, traits, and backends only. Pattern set adds observation; event includes evidence-linked.",
+    "0.6.0 experimental: unpublished; not a released catalog. Version is an internal iteration, not a published language."
+  ]
+}

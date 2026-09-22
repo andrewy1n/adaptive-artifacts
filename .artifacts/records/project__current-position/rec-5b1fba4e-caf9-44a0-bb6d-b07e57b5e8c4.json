@@ -1,0 +1,24 @@
+{
+  "id": "rec-5b1fba4e-caf9-44a0-bb6d-b07e57b5e8c4",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "v0.2-only packaging in progress. Human approved cutover: ship project-agnostic hooks/CLI; drop v0.1. Catalog 0.5.0 unchanged.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "superseded",
+  "relationships": {
+    "supersedes": [
+      "rec-ad3f59c5-d02c-4ec6-bdd9-47b9c4c3d95c"
+    ]
+  },
+  "revision": "sha256:6387023a00cd4bd3196ac298390628de46e4413594173edbf7ec74118ed34ef3",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-05T21:47:44+00:00"
+  }
+}

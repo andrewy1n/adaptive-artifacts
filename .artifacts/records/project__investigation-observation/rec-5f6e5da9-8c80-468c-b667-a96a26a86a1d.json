@@ -1,0 +1,24 @@
+{
+  "id": "rec-5f6e5da9-8c80-468c-b667-a96a26a86a1d",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "cse151b-sp26-competition",
+  "payload": {
+    "source": "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition",
+    "observed_time": "2026-09-04T22:55:00+00:00",
+    "environment": "git submodule; no project-design@0.2.0; no .artifacts/",
+    "what_was_observed": "CSE 151B math-reasoning competition. AGENTS.md owns constraints. docs/log/experiments.md owns scores; decisions.md owns choices; log/runs and analysis/ own abandoned paths. README is a frozen inference submission; sft-007 still planned; report.tex untracked. High discontinuity and exploration already captured in compound Markdown resources."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:e1c0f51bbc18885ecd68538cdfa1b8d2c9e784251578ba62844018f412169b39",
+  "time": {
+    "observed": "2026-09-04T22:55:00+00:00",
+    "recorded": "2026-09-04T22:56:39+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition"
+    ]
+  }
+}

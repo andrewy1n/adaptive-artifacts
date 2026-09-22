@@ -1,0 +1,326 @@
+{
+  "format": "adaptive-artifacts/project-design@0.3.0",
+  "project": "adaptive-artifacts",
+  "kind": "experimental_runtime",
+  "overrides": [],
+  "source_lock": {
+    "catalog_version": "0.6.0",
+    "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
+    "traits": "sha256:c2a14aa765abb653c9b76e6487a914f98bfd90231ecec441d66ff846861778b1",
+    "backends": "sha256:717457f0078f89913f64d0e832b0d4a57643a5474f503b11c443d7fa97e2ea37"
+  },
+  "backend": "git-filesystem",
+  "records": [
+    {
+      "name": "current-position",
+      "pattern": "current-status",
+      "purpose": "Live position across a discontinuity",
+      "canonical_for": "the live position of this subject",
+      "capture": "at_event",
+      "read": "always",
+      "payload": [
+        "position",
+        "scope"
+      ]
+    },
+    {
+      "name": "active-goal",
+      "pattern": "current-status",
+      "purpose": "Live goal",
+      "canonical_for": "the live goal of this subject",
+      "capture": "at_event",
+      "read": "always",
+      "payload": [
+        "goal",
+        "scope"
+      ]
+    },
+    {
+      "name": "next-action",
+      "pattern": "current-status",
+      "purpose": "Live next action",
+      "canonical_for": "the live next action of this subject",
+      "capture": "at_event",
+      "read": "always",
+      "payload": [
+        "next",
+        "scope"
+      ]
+    },
+    {
+      "name": "active-commitment",
+      "pattern": "commitment",
+      "purpose": "Live undertaking",
+      "canonical_for": "the live undertaking of this actor",
+      "capture": "at_event",
+      "read": "always",
+      "payload": [
+        "actor",
+        "outcome",
+        "owner",
+        "effective_time",
+        "scope"
+      ]
+    },
+    {
+      "name": "continuity-question",
+      "pattern": "question",
+      "purpose": "Blocking unknown for session continuity",
+      "canonical_for": "whether this unknown blocks continuity",
+      "capture": "at_event",
+      "read": "always",
+      "payload": [
+        "owner",
+        "blocking",
+        "scope"
+      ]
+    },
+    {
+      "name": "investigation-question",
+      "pattern": "question",
+      "purpose": "Unknown under investigation",
+      "canonical_for": "the open investigation unknown",
+      "capture": "at_event",
+      "read": "if_relevant",
+      "payload": [
+        "motivation",
+        "owner"
+      ]
+    },
+    {
+      "name": "investigation-observation",
+      "pattern": "observation",
+      "purpose": "What was observed during investigation",
+      "canonical_for": "what was observed in this investigation",
+      "capture": "at_event",
+      "read": "query",
+      "payload": [
+        "source",
+        "observed_time",
+        "environment",
+        "what_was_observed"
+      ]
+    },
+    {
+      "name": "finding",
+      "pattern": "finding",
+      "purpose": "Contingent investigation conclusion",
+      "canonical_for": "the investigation conclusion for this claim",
+      "capture": "at_event",
+      "read": "if_relevant",
+      "payload": [
+        "claim",
+        "basis",
+        "invalidated_when"
+      ]
+    },
+    {
+      "name": "failed-attempt",
+      "pattern": "event",
+      "purpose": "Abandoned approach",
+      "canonical_for": "that this approach was abandoned",
+      "capture": "at_event",
+      "read": "if_relevant",
+      "payload": [
+        "attempted_action",
+        "retry_when"
+      ]
+    }
+  ],
+  "views": [
+    {
+      "name": "handoff",
+      "owns_facts": false,
+      "freshness": "on_demand_or_handoff",
+      "parameters": [
+        "group_by"
+      ],
+      "roles": [
+        {
+          "name": "goal",
+          "occupant": "active-goal",
+          "requires_payload": [
+            "goal",
+            "scope"
+          ],
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "position",
+          "occupant": "current-position",
+          "requires_payload": [
+            "position",
+            "scope"
+          ],
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "next",
+          "occupant": "next-action",
+          "requires_payload": [
+            "next",
+            "scope"
+          ],
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "commitment",
+          "occupant": "active-commitment",
+          "requires_payload": [
+            "scope"
+          ],
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          }
+        },
+        {
+          "name": "blocking-question",
+          "occupant": "continuity-question",
+          "requires_payload": [
+            "blocking",
+            "scope"
+          ],
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "open"
+              },
+              {
+                "field": "payload.blocking",
+                "equals": true
+              }
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "investigation-summary",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": [
+        "group_by",
+        "order_by"
+      ],
+      "roles": [
+        {
+          "name": "question",
+          "occupant": "investigation-question",
+          "selection": {
+            "all": []
+          }
+        },
+        {
+          "name": "observation",
+          "occupant": "investigation-observation",
+          "selection": {
+            "all": []
+          }
+        },
+        {
+          "name": "finding",
+          "occupant": "finding",
+          "selection": {
+            "all": []
+          }
+        },
+        {
+          "name": "failed-attempt",
+          "occupant": "failed-attempt",
+          "selection": {
+            "all": []
+          }
+        }
+      ]
+    }
+  ],
+  "bundles": [
+    {
+      "name": "session-continuity",
+      "optional": true,
+      "records": [
+        "current-position",
+        "active-commitment",
+        "continuity-question",
+        "active-goal",
+        "next-action"
+      ],
+      "capture": {
+        "trigger": [
+          "session_boundary"
+        ]
+      }
+    },
+    {
+      "name": "abandoned-path",
+      "optional": true,
+      "records": [
+        "failed-attempt",
+        "investigation-observation"
+      ],
+      "relationships": [
+        {
+          "from": "failed-attempt",
+          "to": "investigation-observation",
+          "type": "informed_by"
+        }
+      ],
+      "capture": {
+        "trigger": [
+          "attempt_abandoned"
+        ]
+      }
+    },
+    {
+      "name": "concluded-investigation",
+      "optional": true,
+      "records": [
+        "investigation-question",
+        "investigation-observation",
+        "finding"
+      ],
+      "capture": {
+        "trigger": [
+          "investigation_concluded"
+        ]
+      }
+    }
+  ],
+  "view_params": {
+    "project:handoff": {
+      "group_by": "scope"
+    },
+    "project:investigation-summary": {
+      "group_by": "subject"
+    }
+  },
+  "occupancy": {},
+  "gaps": []
+}

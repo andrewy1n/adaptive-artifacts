@@ -1,0 +1,24 @@
+{
+  "id": "rec-cfe6fc1d-236b-4a37-91c7-f93ba8486d9c",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "Local plugin works. Cursor payload at ~/.cursor/plugins/local/adaptive-artifacts; CLI adaptive-artifacts on PATH; Claude plugin enabled. This repo uses the plugin (project-local skills/hooks removed). Scratch dogfood at ~/aa-plugin-dogfood passed. Marketplace publish and cse151b materialize still wait. Reload Cursor to load plugin skills/hooks in the IDE.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-f67cea15-a6f4-4a20-b303-f1fd779bfe25"
+    ]
+  },
+  "revision": "sha256:8324b4ce5767334efa05db7063fca70782b4c1868ef5fac2885f130393f91e3d",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-06T08:29:41+00:00"
+  }
+}

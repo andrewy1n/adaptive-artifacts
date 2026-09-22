@@ -1,0 +1,24 @@
+{
+  "id": "rec-71a8b3ae-efdb-4d2b-86e8-760564f0d5e1",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "cse151b-sp26-competition",
+  "payload": {
+    "source": "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition",
+    "observed_time": "2026-09-04T23:25:00+00:00",
+    "environment": "design-artifacts inspect; no project-design@0.2.0; no .artifacts/; no .continuity/; no .cursor rules",
+    "what_was_observed": "Compound docs already own investigation. experiments.md owns scores; decisions.md owns D001\u2013D012; log/runs own per-run narrative; analysis/ owns error modes; research/ owns technique surveys; AGENTS.md owns constraints; run_inference.py owns frozen 16k exact_v1 reproduction; Drive owns checkpoints. Residual gaps: live session position, live work (sft-007 still planned), ship gates buried in D012. Stale surfaces: README vs docs/README vs priv-001 32k vs D008 16k; report-outline still cites pub-001 as shipped baseline."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:a335ae3cdd118d14b669de28e55f3847ace450216f60256dcdf459102b56c1a5",
+  "time": {
+    "observed": "2026-09-04T23:25:00+00:00",
+    "recorded": "2026-09-04T23:25:36+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition"
+    ]
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "rec-b3644450-42b1-4c38-ad1a-b3214bad1e31",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "v0.2 skills are design-artifacts, artifact-runtime, and reassess-artifacts. They assess project shape and pin family versions rather than composing v0.1 presets. Primitives, presets, tools, and hooks remain v0.1. resolve.py lock prints source_lock digests. Catalog 0.5.0.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "superseded",
+  "relationships": {
+    "supersedes": [
+      "rec-c70f89bc-0a70-426c-a6b2-4ba53bb74f83"
+    ]
+  },
+  "revision": "sha256:9c9c81d3930a1db6618f4ac9b91ecc1336c6df8419ec36e1300570a50c6b5d32",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-04T22:51:30+00:00"
+  }
+}

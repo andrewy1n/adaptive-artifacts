@@ -1,0 +1,24 @@
+{
+  "id": "rec-5519c8d7-48d7-47bc-a1f3-99ecdacda662",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "v0.2 is the shipped installer: tools/continuity.py, hooks, adaptive-artifacts/ + optional .continuity/. Plugin 0.2.0. v0.1 surface removed. Catalog 0.5.0 unchanged.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-5b1fba4e-caf9-44a0-bb6d-b07e57b5e8c4"
+    ]
+  },
+  "revision": "sha256:18e11587edd693afd57d152fe5b4052d91f6be396466f3ed302735141e34b050",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-05T21:53:03+00:00"
+  }
+}

@@ -1,0 +1,24 @@
+{
+  "id": "rec-b1a435f0-a878-40bc-b6b3-07556025435b",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "v0.2 installer is tools/artifacts.py; live store is .records/. Continuity is a family of record types, not the CLI or store. Plugin 0.2.0. Catalog 0.5.0 unchanged.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-5519c8d7-48d7-47bc-a1f3-99ecdacda662"
+    ]
+  },
+  "revision": "sha256:1de0e3ad98813312612f31e5974969622a7d87d0930834f1eed3eb99e6888224",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-06T02:39:58+00:00"
+  }
+}

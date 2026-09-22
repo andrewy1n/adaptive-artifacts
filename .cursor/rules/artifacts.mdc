@@ -1,9 +1,25 @@
 ---
 alwaysApply: true
 ---
-This repo uses adaptive artifacts. At session start read
-`.artifacts/MANIFEST.md`; verify head_commit against HEAD before trusting
-snapshots. Type schemas: `.artifacts/schemas/` (conventions in
-schemas/README.md). Append to ledgers at the moment of the event. At
-session end rewrite the state artifact, update the manifest, and pass
-`.artifacts` lint. Follow the adaptive-artifacts skill if installed.
+Protocol is AGENTS.md.
+
+This repo lives on the experimental contract runtime under `.artifacts/`.
+At session start, if views were not injected, run
+`adaptive-artifacts hook-start` and read the derived
+views (also under `.artifacts/views/` after a start hook). Capture records
+at the event with `adaptive-artifacts` (`create`, `supersede`, `update`,
+`correct`, `contradict`, `capture`). Views are derived — regenerate, do
+not edit. At session end, if facts changed write records, regenerate
+views (`handoff --out views/handoff.md`, `view --id
+project:investigation-summary --out views/investigation-summary.md`),
+and run `hook-stop`. Fix validation errors before finishing.
+
+Do not recreate a separate `.records/` or `adaptive-artifacts/` tree.
+Do not amend shipped skills, catalog, runtime, or `hooks/` mid-task.
+Extension-change evidence lives in this store and needs human approval.
+The skill names are `design-artifacts`, `artifact-runtime`, and
+`reassess-artifacts`. This repo uses the installed plugin CLI
+(`adaptive-artifacts`), not `./tools/artifacts.py`.
+
+`design/DESIGN.md` is experimental design rationale, not the live
+protocol and not a store authority.

@@ -1,0 +1,84 @@
+{
+  "entity": {
+    "required_dimensions": ["identity", "kind", "subject_and_scope"],
+    "payload": ["subject"]
+  },
+  "stewarded": {
+    "required_dimensions": ["stewardship"]
+  },
+  "current-claim": {
+    "base_kind": "claim",
+    "required_dimensions": ["epistemic_status", "time"],
+    "lifecycle": {
+      "initial": "active",
+      "states": ["active", "superseded"],
+      "transitions": {
+        "active": ["superseded"]
+      }
+    },
+    "relationships": ["supersedes"],
+    "update": "conditional_replace_with_history",
+    "storage_capabilities": ["conditional_mutation", "history"],
+    "incompatible_with": ["occurrence", "epistemic-claim", "active-undertaking"]
+  },
+  "active-undertaking": {
+    "base_kind": "commitment",
+    "required_dimensions": ["adoption_or_deontic_status", "time"],
+    "lifecycle": {
+      "initial": "active",
+      "states": ["active", "completed", "cancelled", "superseded"],
+      "transitions": {
+        "active": ["completed", "cancelled", "superseded"]
+      }
+    },
+    "relationships": ["supersedes"],
+    "storage_capabilities": ["conditional_mutation", "history"],
+    "incompatible_with": ["occurrence", "current-claim"]
+  },
+  "open-question": {
+    "base_kind": "question",
+    "lifecycle": {
+      "initial": "open",
+      "states": ["open", "answered", "deferred", "closed"],
+      "transitions": {
+        "open": ["answered", "deferred", "closed"],
+        "deferred": ["open", "closed"]
+      }
+    },
+    "relationships": ["resolves"],
+    "storage_capabilities": ["conditional_mutation"]
+  },
+  "evidence-linked": {
+    "relationships": ["informed_by"]
+  },
+  "occurrence": {
+    "required_dimensions": ["provenance", "time"],
+    "lifecycle": {
+      "initial": "recorded",
+      "states": ["recorded"],
+      "transitions": {}
+    },
+    "relationships": ["corrects"],
+    "correction": "successor_record",
+    "correction_status": "derived_from_successor",
+    "storage_capabilities": ["append_with_audit"],
+    "incompatible_with": ["current-claim", "active-undertaking", "epistemic-claim"]
+  },
+  "epistemic-claim": {
+    "base_kind": "claim",
+    "required_dimensions": ["epistemic_status", "provenance"],
+    "lifecycle": {
+      "initial": "asserted",
+      "states": ["asserted", "supported", "disputed", "refuted", "retracted"],
+      "transitions": {
+        "asserted": ["supported", "disputed", "refuted", "retracted"],
+        "supported": ["disputed", "refuted", "retracted"],
+        "disputed": ["supported", "refuted", "retracted"]
+      }
+    },
+    "relationships": ["supported_by", "contradicted_by", "supersedes", "retracts"],
+    "contradiction": "separate_record",
+    "storage_capabilities": ["conditional_mutation", "history"],
+    "incompatible_with": ["current-claim", "occurrence"]
+  }
+}

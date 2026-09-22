@@ -1,0 +1,20 @@
+{
+  "id": "rec-c99fb669-8c77-4d1a-ac16-cd7f77c7a288",
+  "record_type": "project:investigation-question",
+  "base_kind": "question",
+  "subject": "cse151b-sp26-competition",
+  "payload": {
+    "motivation": "Dogfood design-artifacts on a foreign repo that already has a mature docs/log system.",
+    "owner": "agent"
+  },
+  "lifecycle_state": "answered",
+  "relationships": {
+    "resolves": [
+      "rec-ff15460c-e02f-485c-865e-e888e91f1536"
+    ]
+  },
+  "revision": "sha256:6a73e169771ab6b5289a77faff3d2211fa71a93e936c8ac0f0549298f3af6f7c",
+  "stewardship": {
+    "steward": "agent"
+  }
+}

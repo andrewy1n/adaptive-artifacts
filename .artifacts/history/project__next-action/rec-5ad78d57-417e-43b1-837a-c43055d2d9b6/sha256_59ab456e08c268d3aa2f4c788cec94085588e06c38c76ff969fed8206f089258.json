@@ -1,0 +1,24 @@
+{
+  "id": "rec-5ad78d57-417e-43b1-837a-c43055d2d9b6",
+  "record_type": "project:next-action",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "next": "Await human approval of cse151b-sp26-competition project-design@0.3.0. Then materialize under .artifacts/ (retire adaptive-artifacts/). Do not reintroduce a family catalog.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-110c1d0c-7586-4d24-bea1-b6b4e1227a73"
+    ]
+  },
+  "revision": "sha256:59ab456e08c268d3aa2f4c788cec94085588e06c38c76ff969fed8206f089258",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-06T08:00:55+00:00"
+  }
+}

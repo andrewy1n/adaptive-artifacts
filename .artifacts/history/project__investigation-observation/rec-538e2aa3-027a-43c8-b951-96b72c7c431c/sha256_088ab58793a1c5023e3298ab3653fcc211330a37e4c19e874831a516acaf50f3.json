@@ -1,0 +1,24 @@
+{
+  "id": "rec-538e2aa3-027a-43c8-b951-96b72c7c431c",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "source": "Cursor stop hook followup",
+    "observed_time": "2026-09-06T02:50:09+00:00",
+    "environment": "Cursor session-end; project .cursor/hooks.json runs hooks/session-stop.py --cursor",
+    "what_was_observed": "Followup was Session-end v0.2 store check failed with /usr/bin/python3: can't open file '/home/andrewyin/.cursor/plugins/cache/cursor-public/vercel/11c32588786a9d49791372657433b88d49561874/tools/artifacts.py': [Errno 2] No such file or directory. Store itself was not the failure; extension_root() treated CLAUDE_PLUGIN_ROOT as this extension."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:088ab58793a1c5023e3298ab3653fcc211330a37e4c19e874831a516acaf50f3",
+  "time": {
+    "observed": "2026-09-06T02:50:09+00:00",
+    "recorded": "2026-09-06T02:50:14+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "Cursor stop hook followup"
+    ]
+  }
+}

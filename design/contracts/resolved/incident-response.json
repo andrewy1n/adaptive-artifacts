@@ -1,0 +1,1078 @@
+{
+  "format": "adaptive-artifacts/resolved-contract@0.3.0",
+  "project": "incident-response",
+  "resolution": {
+    "catalog_version": "0.6.0",
+    "project_design_format": "0.3.0",
+    "resolved_contract_format": "0.3.0",
+    "traits_version": "0.3.0",
+    "backends_version": "0.4.0",
+    "design_digest": "sha256:a41a946b358e0bbc40310457dea98378fa4447f8bb2122baddd197c9c64a13da",
+    "source_lock": {
+      "catalog_version": "0.6.0",
+      "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
+      "traits": "sha256:c2a14aa765abb653c9b76e6487a914f98bfd90231ecec441d66ff846861778b1",
+      "backends": "sha256:717457f0078f89913f64d0e832b0d4a57643a5474f503b11c443d7fa97e2ea37"
+    },
+    "source_digests": {
+      "catalog.json": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
+      "traits.json": "sha256:c2a14aa765abb653c9b76e6487a914f98bfd90231ecec441d66ff846861778b1",
+      "backends.json": "sha256:717457f0078f89913f64d0e832b0d4a57643a5474f503b11c443d7fa97e2ea37"
+    }
+  },
+  "backend": {
+    "name": "git-filesystem",
+    "capabilities": [
+      "stable_ids",
+      "read",
+      "list",
+      "conditional_mutation",
+      "history",
+      "append_with_audit"
+    ],
+    "guarantees": {
+      "writer_model": "single_writer",
+      "record_write": "atomic_replace",
+      "conflict_detection": "revision_token",
+      "multi_record_write": "non_transactional",
+      "durability": "working_tree"
+    },
+    "baseline_required": [
+      "stable_ids",
+      "read",
+      "list"
+    ],
+    "trait_required": [
+      "conditional_mutation",
+      "history",
+      "append_with_audit"
+    ],
+    "required": [
+      "stable_ids",
+      "read",
+      "list",
+      "conditional_mutation",
+      "history",
+      "append_with_audit"
+    ],
+    "missing": [],
+    "match": "ok"
+  },
+  "records": [
+    {
+      "id": "project:current-position",
+      "name": "current-position",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "position",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "pattern": "current-status",
+      "purpose": "Live position across a discontinuity",
+      "canonical_for": "the live position of this subject"
+    },
+    {
+      "id": "project:active-goal",
+      "name": "active-goal",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "goal",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "pattern": "current-status",
+      "purpose": "Live goal",
+      "canonical_for": "the live goal of this subject"
+    },
+    {
+      "id": "project:next-action",
+      "name": "next-action",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "next",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "pattern": "current-status",
+      "purpose": "Live next action",
+      "canonical_for": "the live next action of this subject"
+    },
+    {
+      "id": "project:active-commitment",
+      "name": "active-commitment",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "active-undertaking"
+      ],
+      "base_kind": "commitment",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "adoption_or_deontic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "actor",
+        "outcome",
+        "owner",
+        "effective_time",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "completed",
+          "cancelled",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "completed",
+            "cancelled",
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "pattern": "commitment",
+      "purpose": "Live undertaking",
+      "canonical_for": "the live undertaking of this actor"
+    },
+    {
+      "id": "project:continuity-question",
+      "name": "continuity-question",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "open-question"
+      ],
+      "base_kind": "question",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship"
+      ],
+      "payload": [
+        "subject",
+        "owner",
+        "blocking",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "open",
+        "states": [
+          "open",
+          "answered",
+          "deferred",
+          "closed"
+        ],
+        "transitions": {
+          "open": [
+            "answered",
+            "deferred",
+            "closed"
+          ],
+          "deferred": [
+            "open",
+            "closed"
+          ]
+        }
+      },
+      "relationships": [
+        "resolves"
+      ],
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation"
+      ],
+      "pattern": "question",
+      "purpose": "Blocking unknown for session continuity",
+      "canonical_for": "whether this unknown blocks continuity"
+    },
+    {
+      "id": "project:investigation-question",
+      "name": "investigation-question",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "open-question"
+      ],
+      "base_kind": "question",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship"
+      ],
+      "payload": [
+        "subject",
+        "motivation",
+        "owner"
+      ],
+      "lifecycle": {
+        "initial": "open",
+        "states": [
+          "open",
+          "answered",
+          "deferred",
+          "closed"
+        ],
+        "transitions": {
+          "open": [
+            "answered",
+            "deferred",
+            "closed"
+          ],
+          "deferred": [
+            "open",
+            "closed"
+          ]
+        }
+      },
+      "relationships": [
+        "resolves"
+      ],
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation"
+      ],
+      "pattern": "question",
+      "purpose": "Unknown under investigation",
+      "canonical_for": "the open investigation unknown"
+    },
+    {
+      "id": "project:investigation-observation",
+      "name": "investigation-observation",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "observation",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "source",
+        "observed_time",
+        "environment",
+        "what_was_observed"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "queried",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "pattern": "observation",
+      "purpose": "What was observed during investigation",
+      "canonical_for": "what was observed in this investigation"
+    },
+    {
+      "id": "project:finding",
+      "name": "finding",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "epistemic-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "epistemic_status",
+        "provenance"
+      ],
+      "payload": [
+        "subject",
+        "claim",
+        "basis",
+        "invalidated_when"
+      ],
+      "lifecycle": {
+        "initial": "asserted",
+        "states": [
+          "asserted",
+          "supported",
+          "disputed",
+          "refuted",
+          "retracted"
+        ],
+        "transitions": {
+          "asserted": [
+            "supported",
+            "disputed",
+            "refuted",
+            "retracted"
+          ],
+          "supported": [
+            "disputed",
+            "refuted",
+            "retracted"
+          ],
+          "disputed": [
+            "supported",
+            "refuted",
+            "retracted"
+          ]
+        }
+      },
+      "relationships": [
+        "supported_by",
+        "contradicted_by",
+        "supersedes",
+        "retracts"
+      ],
+      "contradiction": "separate_record",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "pattern": "finding",
+      "purpose": "Contingent investigation conclusion",
+      "canonical_for": "the investigation conclusion for this claim"
+    },
+    {
+      "id": "project:failed-attempt",
+      "name": "failed-attempt",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence",
+        "evidence-linked"
+      ],
+      "base_kind": "event",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "attempted_action",
+        "retry_when"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects",
+        "informed_by"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "pattern": "event",
+      "purpose": "Abandoned approach",
+      "canonical_for": "that this approach was abandoned"
+    }
+  ],
+  "views": [
+    {
+      "id": "project:handoff",
+      "name": "handoff",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand_or_handoff",
+      "parameters": {
+        "group_by": "response_role"
+      },
+      "roles": [
+        {
+          "name": "goal",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "goal",
+            "scope"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:active-goal",
+          "candidates": [
+            "project:active-goal"
+          ]
+        },
+        {
+          "name": "position",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "position",
+            "scope"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:current-position",
+          "candidates": [
+            "project:current-position"
+          ]
+        },
+        {
+          "name": "next",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "next",
+            "scope"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:next-action",
+          "candidates": [
+            "project:next-action"
+          ]
+        },
+        {
+          "name": "commitment",
+          "requires": [
+            "entity",
+            "stewarded",
+            "active-undertaking"
+          ],
+          "requires_payload": [
+            "scope"
+          ],
+          "base_kind": "commitment",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:active-commitment",
+          "candidates": [
+            "project:active-commitment"
+          ]
+        },
+        {
+          "name": "blocking-question",
+          "requires": [
+            "entity",
+            "stewarded",
+            "open-question"
+          ],
+          "requires_payload": [
+            "blocking",
+            "scope"
+          ],
+          "base_kind": "question",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "open"
+              },
+              {
+                "field": "payload.blocking",
+                "equals": true
+              }
+            ]
+          },
+          "occupant": "project:continuity-question",
+          "candidates": [
+            "project:continuity-question"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project:investigation-summary",
+      "name": "investigation-summary",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": {
+        "order_by": "current_relevance"
+      },
+      "roles": [
+        {
+          "name": "question",
+          "requires": [
+            "entity",
+            "stewarded",
+            "open-question"
+          ],
+          "requires_payload": [],
+          "base_kind": "question",
+          "selection": {
+            "all": []
+          },
+          "occupant": "project:investigation-question",
+          "candidates": [
+            "project:continuity-question",
+            "project:investigation-question"
+          ]
+        },
+        {
+          "name": "observation",
+          "requires": [
+            "entity",
+            "occurrence"
+          ],
+          "requires_payload": [],
+          "base_kind": "observation",
+          "selection": {
+            "all": []
+          },
+          "occupant": "project:investigation-observation",
+          "candidates": [
+            "project:investigation-observation"
+          ]
+        },
+        {
+          "name": "finding",
+          "requires": [
+            "entity",
+            "epistemic-claim"
+          ],
+          "requires_payload": [],
+          "base_kind": "claim",
+          "selection": {
+            "all": []
+          },
+          "occupant": "project:finding",
+          "candidates": [
+            "project:finding"
+          ]
+        },
+        {
+          "name": "failed-attempt",
+          "requires": [
+            "entity",
+            "occurrence",
+            "evidence-linked"
+          ],
+          "requires_payload": [],
+          "base_kind": "event",
+          "selection": {
+            "all": []
+          },
+          "occupant": "project:failed-attempt",
+          "candidates": [
+            "project:failed-attempt"
+          ]
+        }
+      ]
+    }
+  ],
+  "bundles": [
+    {
+      "id": "project:session-continuity",
+      "name": "session-continuity",
+      "namespace": "project",
+      "optional": true,
+      "records": [
+        "project:current-position",
+        "project:active-commitment",
+        "project:continuity-question",
+        "project:active-goal",
+        "project:next-action"
+      ],
+      "relationships": [],
+      "capture": {
+        "trigger": [
+          "session_boundary"
+        ]
+      }
+    },
+    {
+      "id": "project:abandoned-path",
+      "name": "abandoned-path",
+      "namespace": "project",
+      "optional": true,
+      "records": [
+        "project:failed-attempt",
+        "project:investigation-observation"
+      ],
+      "relationships": [
+        {
+          "from": "project:failed-attempt",
+          "to": "project:investigation-observation",
+          "type": "informed_by"
+        }
+      ],
+      "capture": {
+        "trigger": [
+          "attempt_abandoned"
+        ]
+      }
+    },
+    {
+      "id": "project:concluded-investigation",
+      "name": "concluded-investigation",
+      "namespace": "project",
+      "optional": true,
+      "records": [
+        "project:investigation-question",
+        "project:investigation-observation",
+        "project:finding"
+      ],
+      "relationships": [],
+      "capture": {
+        "trigger": [
+          "investigation_concluded"
+        ]
+      }
+    }
+  ],
+  "experimental_candidates": [
+    {
+      "id": "operations:incident-position",
+      "name": "incident-position",
+      "namespace": "operations",
+      "experimental": true,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "position",
+        "severity",
+        "commander",
+        "phase",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "role_compatibility": {
+        "view": "project:handoff",
+        "role": "position",
+        "compatible": true
+      }
+    },
+    {
+      "id": "operations:diagnosis",
+      "name": "diagnosis",
+      "namespace": "operations",
+      "experimental": true,
+      "traits": [
+        "entity",
+        "epistemic-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "epistemic_status",
+        "provenance"
+      ],
+      "payload": [
+        "subject",
+        "confidence"
+      ],
+      "lifecycle": {
+        "initial": "asserted",
+        "states": [
+          "asserted",
+          "supported",
+          "disputed",
+          "refuted",
+          "retracted"
+        ],
+        "transitions": {
+          "asserted": [
+            "supported",
+            "disputed",
+            "refuted",
+            "retracted"
+          ],
+          "supported": [
+            "disputed",
+            "refuted",
+            "retracted"
+          ],
+          "disputed": [
+            "supported",
+            "refuted",
+            "retracted"
+          ]
+        }
+      },
+      "relationships": [
+        "supported_by",
+        "contradicted_by",
+        "supersedes",
+        "retracts"
+      ],
+      "contradiction": "separate_record",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "role_compatibility": {
+        "view": "project:investigation-summary",
+        "role": "finding",
+        "compatible": true
+      }
+    },
+    {
+      "id": "operations:intervention",
+      "name": "intervention",
+      "namespace": "operations",
+      "experimental": true,
+      "traits": [
+        "entity",
+        "stewarded",
+        "active-undertaking"
+      ],
+      "base_kind": "commitment",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "adoption_or_deontic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "authorization",
+        "target",
+        "expected_effect",
+        "scope"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "completed",
+          "cancelled",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "completed",
+            "cancelled",
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "role_compatibility": {
+        "view": "project:handoff",
+        "role": "commitment",
+        "compatible": true
+      }
+    }
+  ],
+  "source_revisions": {
+    "monitoring": "timestamped_query",
+    "command_output": "timestamped_capture",
+    "code": "deployed_revision"
+  },
+  "gaps": [
+    {
+      "future_type": "incident",
+      "belongs_in_family": "operations",
+      "would_occupy": null,
+      "must_provide_traits": [
+        "entity"
+      ],
+      "base_kind": "event",
+      "extra_payload": [
+        "severity",
+        "commander",
+        "declared_at",
+        "resolved_at"
+      ],
+      "rationale": "Declaration and resolution are not the current-claim lifecycle, so this type cannot occupy the position role."
+    },
+    {
+      "future_type": "incident-event",
+      "belongs_in_family": "operations",
+      "would_occupy": null,
+      "must_provide_traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "event",
+      "extra_payload": [
+        "occurred_at",
+        "actor",
+        "source"
+      ],
+      "rationale": "Timeline events share occurrence but are not failed attempts; they would need their own view role."
+    },
+    {
+      "need": "operational decisions with explicit approval authority",
+      "belongs_in_family": "operations",
+      "would_occupy": null
+    },
+    {
+      "need": "postmortem actions as commitments with organizational ownership",
+      "belongs_in_family": "operations",
+      "would_occupy": null
+    }
+  ]
+}

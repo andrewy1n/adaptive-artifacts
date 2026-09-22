@@ -1,0 +1,24 @@
+{
+  "id": "rec-a831f14c-ff49-4c5c-939c-1b622c57f808",
+  "record_type": "project:current-position",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "position": "Capability families removed. Catalog 0.6.0, project-design@0.3.0. cse151b-sp26-competition 0.3.0 redesign is in human review: project-declared session packet + work-item + ship-gate; docs/log stays canonical.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "superseded",
+  "relationships": {
+    "supersedes": [
+      "rec-e018a4d0-15f9-4c7c-99a0-106a41a387cf"
+    ]
+  },
+  "revision": "sha256:ba295aae708260fd0b3fca75c6b6207e9b784ff62f5e512d71dc222699ec3e9b",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-06T08:00:55+00:00"
+  }
+}

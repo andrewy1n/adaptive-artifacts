@@ -1,0 +1,24 @@
+{
+  "id": "rec-02d87288-a66c-47c7-9618-d02b6591b5dd",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "cse151b-sp26-competition",
+  "payload": {
+    "source": "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition/adaptive-artifacts/project-design.json",
+    "observed_time": "2026-09-04T23:28:00+00:00",
+    "environment": "human approved proposed roster as-is; resolve.py project succeeded",
+    "what_was_observed": "Materialized project-design@0.2.0 with continuity 0.6.0, project:work-item, project:ship-gate; exploration omitted. Resolved contract written. Discovery pointers in .cursor/rules/artifacts.mdc and CLAUDE.md. No live store."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:d045d3a46737158aa7552fc81555e4590b80ecb98ab9377dfe5d57ce6a0dfcb2",
+  "time": {
+    "observed": "2026-09-04T23:28:00+00:00",
+    "recorded": "2026-09-04T23:29:02+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition/adaptive-artifacts/project-design.json"
+    ]
+  }
+}

@@ -1,0 +1,11 @@
+{
+  "name": "adaptive-artifacts",
+  "version": "0.1.0",
+  "description": "Experimental unpublished 0.1.0. Agent-designed project artifacts: project-design contracts, typed semantic records, derived views, and session lifecycle hooks.",
+  "author": {
+    "name": "andrewy1n",
+    "email": "andrewyingo@gmail.com"
+  },
+  "skills": "./skills/",
+  "hooks": "./hooks/hooks-cursor.json"
+}

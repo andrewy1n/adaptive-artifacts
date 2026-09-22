@@ -1,0 +1,24 @@
+{
+  "id": "rec-639fa063-e4b2-40bd-9fde-cfb0566af065",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "cse151b-sp26-competition",
+  "payload": {
+    "source": "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition",
+    "observed_time": "2026-09-06T08:05:00+00:00",
+    "environment": "design-artifacts 0.3.0 redesign inspect; no .artifacts/ store; existing adaptive-artifacts/project-design@0.2.0",
+    "what_was_observed": "0.2.0 design still at adaptive-artifacts/ (families continuity 0.6.0, catalog 0.5.0, work-item + ship-gate; no live store). Will not resolve on catalog 0.6.0. docs/log still owns investigation: experiments.md scores, decisions.md D001\u2013D012, log/runs + analysis/ narratives. AGENTS.md owns constraints; run_inference.py owns frozen 16k exact_v1; Drive owns checkpoints. Live work still sft-007 planned; D012 ship gates: holdout \u226564.44% overall and MCQ \u226577% plus weak-topic upside vs pub-002. Compound-doc drift: docs/README current-best still pub-002 61.90%; experiments.md has pub-003 65.81%; root README frozen 16k; priv-002 38.5% LB analysis exists but is absent from the registry; D008 rejected 32k then priv-001 shipped 32k."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:f48a0fd48f17e215aac858db192a6264a0f6d53e9d6146439666f35375f12098",
+  "time": {
+    "observed": "2026-09-06T08:05:00+00:00",
+    "recorded": "2026-09-06T08:00:55+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "/home/andrewyin/UCSD-CSE-Programming-Assignments/CSE151B/151B_SP26_Competition"
+    ]
+  }
+}

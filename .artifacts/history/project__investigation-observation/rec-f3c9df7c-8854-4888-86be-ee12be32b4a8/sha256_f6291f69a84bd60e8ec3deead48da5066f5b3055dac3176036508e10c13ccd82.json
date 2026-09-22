@@ -1,0 +1,24 @@
+{
+  "id": "rec-f3c9df7c-8854-4888-86be-ee12be32b4a8",
+  "record_type": "project:investigation-observation",
+  "base_kind": "observation",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "source": "DESIGN.md, .artifacts/project-design.json, design/contracts (README, catalog, traits, parcelpipe fixture), views, findings rec-89045754 rec-b7a519e4 rec-ff15460c, design/DOGFOOD.md",
+    "observed_time": "2026-09-06T20:15:00+00:00",
+    "environment": "this conversation; design review",
+    "what_was_observed": "This repo project-design@0.3.0 has no assessment field (fixtures do; resolver does not require it) and copies the fixture session roster (five continuity types + four investigation types, empty gaps). DESIGN.md still describes a proposed foundation and v0.2 format while the live format is project-design@0.3.0 / catalog 0.6.0. The three-part model (resources, records, views) is only records+views+bundles in the executable contract. ParcelPipe duplicates the same nine types plus work-item/acceptance/check-run. investigation-summary roles use empty all:[] so every observation and finding is selected. Session-loaded size budgets are stated in DESIGN.md and not present in resolve.py or the runtime. DOGFOOD.md still refers to .continuity/ and .records/."
+  },
+  "lifecycle_state": "recorded",
+  "relationships": {},
+  "revision": "sha256:f6291f69a84bd60e8ec3deead48da5066f5b3055dac3176036508e10c13ccd82",
+  "time": {
+    "observed": "2026-09-06T20:15:00+00:00",
+    "recorded": "2026-09-06T20:14:42+00:00"
+  },
+  "provenance": {
+    "sources": [
+      "DESIGN.md, .artifacts/project-design.json, design/contracts (README, catalog, traits, parcelpipe fixture), views, findings rec-89045754 rec-b7a519e4 rec-ff15460c, design/DOGFOOD.md"
+    ]
+  }
+}

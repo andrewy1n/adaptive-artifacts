@@ -1,0 +1,24 @@
+{
+  "id": "rec-b836012a-ded6-44f4-b821-c710e4408e00",
+  "record_type": "project:finding",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "claim": "A second person cannot download this as a plugin today and have the CLI work on another project.",
+    "basis": "No git remote, marketplace, pip package, or plugin bin/. Skills invoke python3 tools/artifacts.py in the consuming project cwd. design-artifacts does not plant the CLI. Hooks only find tools/artifacts.py if the full tree (tools/ + design/contracts/) is the plugin root.",
+    "invalidated_when": "the CLI is on PATH from the plugin (bin/ or equivalent) and skills invoke that copy with --root, or design-artifacts plants a working CLI, and there is a published install path"
+  },
+  "lifecycle_state": "asserted",
+  "relationships": {
+    "supported_by": [
+      "rec-577f4fbe-f3e5-4360-9e10-db2737683fa7"
+    ]
+  },
+  "revision": "sha256:9d3c309577d6a5aaffcd0323ecec25b9a534d2625380bbd22021a7d3d0cb6fc6",
+  "epistemic_status": "asserted",
+  "provenance": {
+    "sources": [
+      "No git remote, marketplace, pip package, or plugin bin/. Skills invoke python3 tools/artifacts.py in the consuming project cwd. design-artifacts does not plant the CLI. Hooks only find tools/artifacts.py if the full tree (tools/ + design/contracts/) is the plugin root."
+    ]
+  }
+}

@@ -1,0 +1,5 @@
+{
+  "store_version": 1,
+  "contract": ".artifacts/resolved-contract.json",
+  "contract_digest": "sha256:10abed79ffac56cf02069f166d7f96789c8e81a9c99924cbbb3e094170bceb34"
+}

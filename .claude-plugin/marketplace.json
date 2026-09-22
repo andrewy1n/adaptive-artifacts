@@ -1,0 +1,14 @@
+{
+  "name": "adaptive-artifacts",
+  "owner": {
+    "name": "andrewy1n",
+    "email": "andrewyingo@gmail.com"
+  },
+  "plugins": [
+    {
+      "name": "adaptive-artifacts",
+      "source": "./",
+      "description": "Agent-designed project artifacts: contracts, typed records, derived views, session hooks."
+    }
+  ]
+}

@@ -1,0 +1,34 @@
+{
+  "git-filesystem": {
+    "capabilities": [
+      "stable_ids",
+      "read",
+      "list",
+      "conditional_mutation",
+      "history",
+      "append_with_audit"
+    ],
+    "guarantees": {
+      "writer_model": "single_writer",
+      "record_write": "atomic_replace",
+      "conflict_detection": "revision_token",
+      "multi_record_write": "non_transactional",
+      "durability": "working_tree"
+    }
+  },
+  "ephemeral-memory": {
+    "capabilities": [
+      "stable_ids",
+      "read",
+      "list",
+      "conditional_mutation"
+    ],
+    "guarantees": {
+      "writer_model": "single_process",
+      "record_write": "process_atomic",
+      "conflict_detection": "none",
+      "multi_record_write": "non_transactional",
+      "durability": "process_lifetime"
+    }
+  }
+}

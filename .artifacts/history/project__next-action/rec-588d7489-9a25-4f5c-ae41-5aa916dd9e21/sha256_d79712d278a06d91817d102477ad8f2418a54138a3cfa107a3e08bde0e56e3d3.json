@@ -1,0 +1,24 @@
+{
+  "id": "rec-588d7489-9a25-4f5c-ae41-5aa916dd9e21",
+  "record_type": "project:next-action",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "next": "Reload Cursor so skills and hooks come from the local plugin (now 0.1.0 experimental). After that, a real IDE session in this repo or ~/aa-plugin-dogfood. Marketplace publish and cse151b materialize stay parked. Re-run scripts/sync-plugin.sh after source edits.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-76f28e0b-a555-42af-bdba-871a23bd605e"
+    ]
+  },
+  "revision": "sha256:d79712d278a06d91817d102477ad8f2418a54138a3cfa107a3e08bde0e56e3d3",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-22T05:43:52+00:00"
+  }
+}

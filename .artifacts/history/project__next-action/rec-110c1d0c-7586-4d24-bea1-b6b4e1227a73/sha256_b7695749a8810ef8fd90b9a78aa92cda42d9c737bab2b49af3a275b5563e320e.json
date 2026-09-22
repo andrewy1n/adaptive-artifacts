@@ -1,0 +1,24 @@
+{
+  "id": "rec-110c1d0c-7586-4d24-bea1-b6b4e1227a73",
+  "record_type": "project:next-action",
+  "base_kind": "claim",
+  "subject": "adaptive-artifacts",
+  "payload": {
+    "next": "Dogfood primitive-first design on a foreign repo. Do not reintroduce a family catalog without evidence that project-declared views fail.",
+    "scope": "repo"
+  },
+  "lifecycle_state": "active",
+  "relationships": {
+    "supersedes": [
+      "rec-b6fa88d6-7025-4059-8bfa-7da767ea4038"
+    ]
+  },
+  "revision": "sha256:b7695749a8810ef8fd90b9a78aa92cda42d9c737bab2b49af3a275b5563e320e",
+  "stewardship": {
+    "steward": "agent"
+  },
+  "epistemic_status": "asserted",
+  "time": {
+    "as_of": "2026-09-06T03:25:58+00:00"
+  }
+}
