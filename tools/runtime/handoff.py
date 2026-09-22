@@ -99,6 +99,49 @@ def _store_state_digest(records: list[dict[str, Any]]) -> str:
     return canonical_digest(revisions)
 
 
+def _group_ordinal(
+    group_name: str, order_field: str, records: list[dict[str, Any]]
+) -> int | None:
+    """Look up the ordering value for a group from its grouping record.
+
+    The "grouping record" is the record whose `subject` equals the group
+    key (e.g. a phase record, when grouping work-items by `payload.phase`).
+    It need not be a record any role in this view selects -- it's found by
+    scanning the full record set handed to `generate_view`. Candidates are
+    tried in id order so a duplicate subject still resolves deterministically.
+    Only a plain `int` counts as an orderable value (bool is excluded even
+    though it's a Python int subclass); anything else means "not orderable".
+    """
+    candidates = sorted(
+        (record for record in records if record.get("subject") == group_name),
+        key=lambda record: record.get("id", ""),
+    )
+    for candidate in candidates:
+        value = (candidate.get("payload") or {}).get(order_field)
+        if isinstance(value, int) and not isinstance(value, bool):
+            return value
+    return None
+
+
+def _group_sort_key(
+    order_field: str | None, records: list[dict[str, Any]]
+) -> Any:
+    """Sort key: ordinal-ordered groups first (by ordinal, then name to break
+    ties), then groups with no declared order_by or no orderable value,
+    alphabetically. When order_field is None this reduces to the previous
+    plain alphabetical sort, so unchanged views render byte-identical.
+    """
+
+    def key(group_name: str) -> tuple[int, Any]:
+        if order_field:
+            ordinal = _group_ordinal(group_name, order_field, records)
+            if ordinal is not None:
+                return (0, (ordinal, group_name))
+        return (1, (group_name,))
+
+    return key
+
+
 def generate_view(
     contract: dict[str, Any],
     view_id: str,
@@ -107,7 +150,9 @@ def generate_view(
     store_root: str = _DEFAULT_STORE_ROOT,
 ) -> str:
     view = view_by_id(contract, view_id)
-    group_by = (view.get("parameters") or {}).get("group_by") or "subject"
+    parameters = view.get("parameters") or {}
+    group_by = parameters.get("group_by") or "subject"
+    order_field = parameters.get("order_by")
     role_names = [role["name"] for role in view["roles"]]
     groups: dict[str, dict[str, list[dict[str, Any]]]] = {}
     contributing: dict[str, dict[str, Any]] = {}
@@ -130,12 +175,16 @@ def generate_view(
         lines.append("")
         return "\n".join(lines)
 
-    for group_name in sorted(groups):
+    for group_name in sorted(groups, key=_group_sort_key(order_field, records)):
         section = groups[group_name]
         lines.append(f"## {group_name}")
         lines.append("")
         for role in view["roles"]:
-            items = section.get(role["name"]) or []
+            # Subject first: ids are random uuids, so id-order is stable but unreadable.
+            items = sorted(
+                section.get(role["name"]) or [],
+                key=lambda r: (r.get("subject", ""), r.get("id", "")),
+            )
             if not items:
                 continue
             lines.append(f"### {_title(role['name'])}")

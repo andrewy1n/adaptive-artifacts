@@ -536,7 +536,7 @@ def compatibility_cases(catalog: dict, parcelpipe: dict, errors: list[str]) -> N
     expect_error(
         "unknown pattern",
         lambda: compose_pattern_record(
-            {"name": "x", "pattern": "phase", "canonical_for": "x", "payload": []},
+            {"name": "x", "pattern": "not-a-real-pattern", "canonical_for": "x", "payload": []},
             traits,
         ),
         errors,

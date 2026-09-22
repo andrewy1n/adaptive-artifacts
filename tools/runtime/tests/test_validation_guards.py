@@ -21,6 +21,7 @@ from contract import contract_digest  # noqa: E402
 from validation import (  # noqa: E402
     ValidationError,
     validate_immutability,
+    validate_payload_references,
     validate_required_sections,
 )
 
@@ -248,6 +249,86 @@ class ResolveRequiredSectionsThreadingTests(unittest.TestCase):
         }
         composed = compose_record(record, "test", catalog["traits"], experimental=False)
         self.assertNotIn("required_sections", composed)
+
+
+class PayloadReferenceTests(unittest.TestCase):
+    def _defs(self):
+        return {
+            "project:work-item": {"payload_references": {"phase": "project:phase"}},
+            "project:phase": {},
+        }
+
+    def _phase(self, phase_id="phase-1", subject="Ingest", lifecycle_state="active"):
+        return {
+            "id": phase_id,
+            "record_type": "project:phase",
+            "subject": subject,
+            "lifecycle_state": lifecycle_state,
+            "payload": {},
+        }
+
+    def _work_item(self, phase_value, record_id="wi-1"):
+        return {
+            "id": record_id,
+            "record_type": "project:work-item",
+            "subject": "Do the thing",
+            "lifecycle_state": "active",
+            "payload": {"phase": phase_value},
+        }
+
+    def test_reference_matching_existing_subject_passes(self):
+        records = [self._phase(), self._work_item("Ingest")]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(errors, [])
+
+    def test_dangling_reference_fails_and_names_field_value_and_record(self):
+        records = [self._phase(), self._work_item("Onboarding")]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("wi-1", errors[0])
+        self.assertIn("phase", errors[0])
+        self.assertIn("Onboarding", errors[0])
+
+    def test_empty_string_is_treated_as_unset_not_a_violation(self):
+        records = [self._phase(), self._work_item("")]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(errors, [])
+
+    def test_missing_field_entirely_is_not_a_violation(self):
+        work_item = self._work_item("Ingest")
+        del work_item["payload"]["phase"]
+        records = [self._phase(), work_item]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(errors, [])
+
+    def test_referenced_record_in_non_active_state_still_passes(self):
+        # Existence, not currency: a completed/superseded phase is still a
+        # valid historical target for a record created while it was live.
+        records = [
+            self._phase(lifecycle_state="superseded"),
+            self._work_item("Ingest"),
+        ]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(errors, [])
+
+    def test_absent_declaration_is_a_no_op(self):
+        defs = {"project:work-item": {}, "project:phase": {}}
+        records = [self._phase(), self._work_item("Nonexistent")]
+        errors: list[str] = []
+        validate_payload_references(records, defs, errors)
+        self.assertEqual(errors, [])
+
+    def test_no_phase_records_at_all_fails_for_any_non_empty_value(self):
+        records = [self._work_item("Ingest")]
+        errors: list[str] = []
+        validate_payload_references(records, self._defs(), errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn("Ingest", errors[0])
 
 
 if __name__ == "__main__":

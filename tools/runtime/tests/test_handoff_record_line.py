@@ -47,10 +47,15 @@ def _role(name="thing", occupant="demo:thing", requires_payload=None):
     return role
 
 
-def _contract(view_id, roles, group_by=None):
+def _contract(view_id, roles, group_by=None, order_by=None):
     view = {"id": view_id, "roles": roles}
+    parameters = {}
     if group_by is not None:
-        view["parameters"] = {"group_by": group_by}
+        parameters["group_by"] = group_by
+    if order_by is not None:
+        parameters["order_by"] = order_by
+    if parameters:
+        view["parameters"] = parameters
     return {"views": [view]}
 
 
@@ -199,6 +204,112 @@ class GenerateViewGroupingAndHeadingsTests(unittest.TestCase):
         contract = _contract("demo:view", [role])
         markdown = generate_view(contract, "demo:view", [])
         self.assertIn("_No matching records._", markdown)
+
+
+def _phase(subject, ordinal=None, phase_id=None, record_type="demo:phase"):
+    payload = {} if ordinal is None else {"ordinal": ordinal}
+    return {
+        "id": phase_id or f"phase-rec-{subject}",
+        "record_type": record_type,
+        "subject": subject,
+        "lifecycle_state": "active",
+        "payload": payload,
+    }
+
+
+def _item(phase, record_id, goal="do it"):
+    return _record(record_id=record_id, subject=goal, goal=goal, phase=phase)
+
+
+class GroupOrderingTests(unittest.TestCase):
+    def _view(self, records, order_by=None):
+        role = _role(name="thing", requires_payload=["goal"])
+        contract = _contract("demo:view", [role], group_by="phase", order_by=order_by)
+        return generate_view(contract, "demo:view", records)
+
+    def _group_headings(self, markdown):
+        return [line[3:] for line in markdown.splitlines() if line.startswith("## ")]
+
+    def test_without_order_by_groups_are_plain_alphabetical(self):
+        # This is the bug the feature fixes: "phase-10" sorts before
+        # "phase-2" alphabetically even though it should come after.
+        records = [
+            _phase("phase-2", ordinal=2),
+            _phase("phase-10", ordinal=10),
+            _item("phase-2", "wi-1"),
+            _item("phase-10", "wi-2"),
+        ]
+        markdown = self._view(records, order_by=None)
+        self.assertEqual(self._group_headings(markdown), ["phase-10", "phase-2"])
+
+    def test_ordinal_on_grouping_record_fixes_two_vs_ten(self):
+        records = [
+            _phase("phase-2", ordinal=2),
+            _phase("phase-10", ordinal=10),
+            _item("phase-2", "wi-1"),
+            _item("phase-10", "wi-2"),
+        ]
+        markdown = self._view(records, order_by="ordinal")
+        self.assertEqual(self._group_headings(markdown), ["phase-2", "phase-10"])
+
+    def test_tied_ordinals_break_alphabetically(self):
+        records = [
+            _phase("phase-b", ordinal=5),
+            _phase("phase-a", ordinal=5),
+            _item("phase-b", "wi-1"),
+            _item("phase-a", "wi-2"),
+        ]
+        markdown = self._view(records, order_by="ordinal")
+        self.assertEqual(self._group_headings(markdown), ["phase-a", "phase-b"])
+
+    def test_group_with_no_orderable_value_falls_back_after_ordered_groups(self):
+        records = [
+            _phase("phase-2", ordinal=2),
+            _phase("phase-1", ordinal=1),
+            _item("phase-2", "wi-1"),
+            _item("phase-1", "wi-2"),
+            # "phase-unranked" has no matching phase record at all.
+            _item("phase-unranked", "wi-3"),
+        ]
+        markdown = self._view(records, order_by="ordinal")
+        self.assertEqual(
+            self._group_headings(markdown), ["phase-1", "phase-2", "phase-unranked"]
+        )
+
+    def test_non_int_ordinal_value_treated_as_not_orderable(self):
+        records = [
+            _phase("phase-a", record_type="demo:phase"),
+            _item("phase-a", "wi-1"),
+        ]
+        records[0]["payload"]["ordinal"] = "not-a-number"
+        records.append(_phase("phase-b", ordinal=1))
+        records.append(_item("phase-b", "wi-2"))
+        markdown = self._view(records, order_by="ordinal")
+        # phase-b has a real ordinal so it sorts first; phase-a falls back.
+        self.assertEqual(self._group_headings(markdown), ["phase-b", "phase-a"])
+
+    def test_within_group_order_is_stable_regardless_of_input_order(self):
+        role = _role(name="thing", requires_payload=["goal"])
+        contract = _contract("demo:view", [role], group_by="subject")
+        a = _record(subject="same", record_id="rec-a", goal="a")
+        b = _record(subject="same", record_id="rec-b", goal="b")
+        forward = generate_view(contract, "demo:view", [a, b])
+        backward = generate_view(contract, "demo:view", [b, a])
+        self.assertEqual(forward, backward)
+        first_index = forward.index("rec-a")
+        second_index = forward.index("rec-b")
+        self.assertLess(first_index, second_index)
+
+    def test_two_renders_of_unchanged_store_are_byte_identical(self):
+        records = [
+            _phase("phase-2", ordinal=2),
+            _phase("phase-10", ordinal=10),
+            _item("phase-2", "wi-1"),
+            _item("phase-10", "wi-2"),
+        ]
+        first = self._view(list(records), order_by="ordinal")
+        second = self._view(list(reversed(records)), order_by="ordinal")
+        self.assertEqual(first, second)
 
 
 class StoreStateProvenanceTests(unittest.TestCase):

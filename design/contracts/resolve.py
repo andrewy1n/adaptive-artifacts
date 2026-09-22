@@ -35,6 +35,7 @@ RECORD_TRAIT_COMPOSE_ALLOWED = {
     "read_policy",
     "base_kind",
     "required_sections",
+    "payload_references",
 }
 
 RECORD_PATTERN_ALLOWED = {
@@ -50,6 +51,7 @@ RECORD_PATTERN_ALLOWED = {
     "payload",
     "namespace",
     "required_sections",
+    "payload_references",
 }
 
 VIEW_ROLE_ALLOWED = {
@@ -87,7 +89,7 @@ PATTERN_TRAITS = {
         "base_kind": "commitment",
     },
     "decision": {
-        "traits": ["entity", "stewarded", "current-claim"],
+        "traits": ["entity", "stewarded", "current-claim", "contradictable"],
         "base_kind": "claim",
     },
     "definition": {
@@ -97,6 +99,14 @@ PATTERN_TRAITS = {
     "replica": {
         "traits": ["entity", "stewarded", "current-claim"],
         "base_kind": "claim",
+    },
+    "task": {
+        "traits": ["entity", "stewarded", "staged-progress"],
+        "base_kind": "task",
+    },
+    "phase": {
+        "traits": ["entity", "stewarded", "staged-progress"],
+        "base_kind": "phase",
     },
 }
 
@@ -362,6 +372,7 @@ def compose_record(
         "read_policy": record.get("read_policy"),
         "storage_capabilities": caps,
         "required_sections": list(record.get("required_sections") or []) or None,
+        "payload_references": dict(record.get("payload_references") or {}) or None,
     }
     return {key: value for key, value in composed_record.items() if value is not None}
 
@@ -422,6 +433,8 @@ def compose_pattern_record(record: dict, traits: dict) -> dict:
         trait_shaped["read_policy"] = read_policy
     if record.get("required_sections"):
         trait_shaped["required_sections"] = list(record["required_sections"])
+    if record.get("payload_references"):
+        trait_shaped["payload_references"] = dict(record["payload_references"])
     composed = compose_record(trait_shaped, namespace, traits, experimental=False)
     composed["pattern"] = pattern
     for key in ("purpose", "canonical_for", "replica_of", "derived_from"):

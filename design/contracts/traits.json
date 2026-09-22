@@ -19,7 +19,7 @@
     "relationships": ["supersedes"],
     "update": "conditional_replace_with_history",
     "storage_capabilities": ["conditional_mutation", "history"],
-    "incompatible_with": ["occurrence", "epistemic-claim", "active-undertaking"]
+    "incompatible_with": ["occurrence", "epistemic-claim", "active-undertaking", "staged-progress"]
   },
   "active-undertaking": {
     "base_kind": "commitment",
@@ -33,7 +33,21 @@
     },
     "relationships": ["supersedes"],
     "storage_capabilities": ["conditional_mutation", "history"],
-    "incompatible_with": ["occurrence", "current-claim"]
+    "incompatible_with": ["occurrence", "current-claim", "staged-progress"]
+  },
+  "staged-progress": {
+    "lifecycle": {
+      "initial": "planned",
+      "states": ["planned", "in_progress", "done", "withdrawn", "superseded"],
+      "transitions": {
+        "planned": ["in_progress", "withdrawn", "superseded"],
+        "in_progress": ["done", "withdrawn", "superseded"],
+        "done": ["superseded"]
+      }
+    },
+    "relationships": ["depends_on"],
+    "storage_capabilities": ["conditional_mutation", "history"],
+    "incompatible_with": ["current-claim", "active-undertaking", "occurrence", "epistemic-claim"]
   },
   "open-question": {
     "base_kind": "question",
@@ -62,7 +76,7 @@
     "correction": "successor_record",
     "correction_status": "derived_from_successor",
     "storage_capabilities": ["append_with_audit"],
-    "incompatible_with": ["current-claim", "active-undertaking", "epistemic-claim"]
+    "incompatible_with": ["current-claim", "active-undertaking", "epistemic-claim", "staged-progress"]
   },
   "epistemic-claim": {
     "base_kind": "claim",
@@ -76,9 +90,12 @@
         "disputed": ["supported", "refuted", "retracted"]
       }
     },
-    "relationships": ["supported_by", "contradicted_by", "supersedes", "retracts"],
+    "relationships": ["supported_by", "contradicted_by", "contradicts", "supersedes", "retracts"],
     "contradiction": "separate_record",
     "storage_capabilities": ["conditional_mutation", "history"],
-    "incompatible_with": ["current-claim", "occurrence"]
+    "incompatible_with": ["current-claim", "occurrence", "staged-progress"]
+  },
+  "contradictable": {
+    "relationships": ["contradicted_by"]
   }
 }

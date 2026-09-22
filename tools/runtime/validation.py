@@ -454,6 +454,7 @@ def validate_store(
     validate_supersedes_links(records, defs, errors)
     validate_orphan_superseded(records, defs, errors)
     validate_corrects_links(records, defs, errors)
+    validate_payload_references(records, defs, errors)
     validate_append_only(records, defs, errors)
     if store_root is not None:
         validate_history(store_root, records, errors)
@@ -477,6 +478,57 @@ def reject_append_only_mutation(record_def: dict[str, Any]) -> None:
         raise ValidationError(
             "append_with_audit records cannot be mutated; create a successor"
         )
+
+
+def validate_payload_references(
+    records: list[dict[str, Any]], defs: dict[str, dict], errors: list[str]
+) -> None:
+    """Check payload fields a record definition declares as references to
+    another record type's subject.
+
+    A record definition may declare `payload_references`, e.g.
+    `{"phase": "project:phase"}`, meaning: for every record of this type, if
+    `payload.phase` is set, its value must equal the `subject` of some
+    `project:phase` record. This is contract data (threaded through
+    resolve.py the same way `required_sections` is), not a hardcoded field
+    name, so any record definition can declare it for any payload field.
+
+    This lives here rather than in `validate_record` because checking a
+    reference means looking at every *other* record of the target type --
+    `validate_record` validates one record in isolation and has no access to
+    the rest of the store, so this has to be a whole-store check collected
+    by `validate_store`.
+
+    An empty string is treated as "unset", not a violation -- payload fields
+    routinely start blank pending assignment elsewhere in this schema, and a
+    reference field is no different: unset means "not linked yet", not
+    "linked to nothing". The referenced record may be in any lifecycle
+    state: this checks existence, not currency, so a phase that has since
+    been completed or superseded is still a valid target for a record that
+    was created while it was live.
+    """
+    subjects_by_type: dict[str, set[str]] = {}
+    for candidate in records:
+        subjects_by_type.setdefault(candidate.get("record_type", ""), set()).add(
+            candidate.get("subject", "")
+        )
+    for record in records:
+        record_def = defs.get(record.get("record_type", ""), {})
+        references = record_def.get("payload_references") or {}
+        if not references:
+            continue
+        payload = record.get("payload") or {}
+        for field, target_type in references.items():
+            if field not in payload:
+                continue
+            value = payload[field]
+            if value == "":
+                continue
+            if value not in subjects_by_type.get(target_type, set()):
+                errors.append(
+                    f"{record['id']}: payload field {field!r} value {value!r} "
+                    f"does not match any {target_type} subject"
+                )
 
 
 def validate_corrects_links(

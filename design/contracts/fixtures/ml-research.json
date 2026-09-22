@@ -11,9 +11,9 @@
   },
   "overrides": [],
   "source_lock": {
-    "catalog_version": "0.6.0",
-    "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
-    "traits": "sha256:c2a14aa765abb653c9b76e6487a914f98bfd90231ecec441d66ff846861778b1",
+    "catalog_version": "0.7.0",
+    "catalog": "sha256:d7f0f1d05f8c67f638c0ff1b4ad738161f43c1ec970729709f8f2afc1d8c1eb1",
+    "traits": "sha256:031651d57b0385097ad45aa5f52e62989432797ddf19e26701728359970a332d",
     "backends": "sha256:717457f0078f89913f64d0e832b0d4a57643a5474f503b11c443d7fa97e2ea37"
   },
   "backend": "git-filesystem",
