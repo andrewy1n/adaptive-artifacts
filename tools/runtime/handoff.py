@@ -55,6 +55,15 @@ def _record_relative_path(record: dict[str, Any], store_root: str) -> str:
     return posixpath.join(store_root, "records", type_dir, f"{record['id']}{RECORD_SUFFIX}")
 
 
+def _field_value(record: dict[str, Any], field: str) -> Any:
+    """Resolve a requires_payload entry: `derived.<x>` reads the read-time
+    `derived` mapping (see derive.py); anything else reads payload, as before.
+    """
+    if field.startswith("derived."):
+        return (record.get("derived") or {}).get(field[len("derived.") :])
+    return (record.get("payload") or {}).get(field)
+
+
 def _record_line(
     record: dict[str, Any],
     role: dict[str, Any],
@@ -68,7 +77,7 @@ def _record_line(
     ]
     bits = []
     for field in ordered:
-        value = payload.get(field)
+        value = _field_value(record, field)
         if value is None or value == "":
             continue
         bits.append(str(value))

@@ -12,6 +12,15 @@ class ContractError(Exception):
 
 
 EXPECTED_CONTRACT_FORMAT = "adaptive-artifacts/resolved-contract@0.3.0"
+
+# Kept in sync with derive.compute_derived's output shape. Defined here (the
+# schema-validation module) rather than in derive.py to avoid derive.py <->
+# contract.py becoming a cycle; derive.py doesn't need to import this.
+DERIVED_FIELDS = frozenset({"ready", "wave"})
+
+# equals alone cannot express "open work" once status lives in the lifecycle:
+# there is no single state meaning not-finished.
+SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of"})
 EXPECTED_BACKEND_GUARANTEES = {
     "writer_model": "single_writer",
     "record_write": "atomic_replace",
@@ -38,19 +47,37 @@ def _validate_role_selection(role: dict[str, Any], occupant: dict[str, Any]) -> 
     if not isinstance(clauses, list):
         raise ContractError(f"{role.get('name')}: selection.all must be a list")
     for clause in clauses:
-        if not isinstance(clause, dict) or set(clause) != {"field", "equals"}:
+        if not isinstance(clause, dict) or "field" not in clause:
             raise ContractError(f"{role.get('name')}: invalid selection clause")
+        operators = set(clause) - {"field"}
+        if len(operators) != 1 or not operators <= SELECTION_OPERATORS:
+            raise ContractError(
+                f"{role.get('name')}: selection clause needs exactly one of "
+                f"{sorted(SELECTION_OPERATORS)}"
+            )
+        operator = operators.pop()
+        expected = clause[operator]
+        if operator == "any_of" and not isinstance(expected, list):
+            raise ContractError(f"{role.get('name')}: any_of takes a list")
         field = clause["field"]
         if field == "lifecycle_state":
-            if clause["equals"] not in occupant["lifecycle"]["states"]:
+            wanted = expected if operator == "any_of" else [expected]
+            unknown = [value for value in wanted if value not in occupant["lifecycle"]["states"]]
+            if unknown:
                 raise ContractError(
-                    f"{role.get('name')}: selection uses invalid lifecycle state"
+                    f"{role.get('name')}: selection uses invalid lifecycle state {unknown}"
                 )
         elif isinstance(field, str) and field.startswith("payload."):
             payload_field = field[len("payload.") :]
             if payload_field not in occupant["payload"]:
                 raise ContractError(
                     f"{role.get('name')}: selection uses absent payload field"
+                )
+        elif isinstance(field, str) and field.startswith("derived."):
+            derived_field = field[len("derived.") :]
+            if derived_field not in DERIVED_FIELDS:
+                raise ContractError(
+                    f"{role.get('name')}: selection uses unknown derived field {derived_field!r}"
                 )
         else:
             raise ContractError(
@@ -211,15 +238,24 @@ def record_matches_selection(
         raise ContractError("view role selection must contain an 'all' list")
     for clause in clauses:
         field = clause.get("field")
-        if set(clause) != {"field", "equals"}:
+        operators = set(clause) - {"field"}
+        if len(operators) != 1 or not operators <= SELECTION_OPERATORS:
             raise ContractError("invalid view role selection clause")
+        operator = operators.pop()
         if field == "lifecycle_state":
             actual = record.get("lifecycle_state")
         elif isinstance(field, str) and field.startswith("payload."):
             actual = record.get("payload", {}).get(field[len("payload.") :])
+        elif isinstance(field, str) and field.startswith("derived."):
+            actual = (record.get("derived") or {}).get(field[len("derived.") :])
         else:
             raise ContractError(f"unsupported view role selection field {field!r}")
-        if actual != clause["equals"]:
+        expected = clause[operator]
+        if operator == "equals" and actual != expected:
+            return False
+        if operator == "not_equals" and actual == expected:
+            return False
+        if operator == "any_of" and actual not in expected:
             return False
     return True
 

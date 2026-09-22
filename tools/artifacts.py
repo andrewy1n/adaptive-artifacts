@@ -32,6 +32,7 @@ from contract import (
     requires_history,
     view_by_id,
 )
+from derive import attach_derived_all, compute_derived
 from git_backend import GitContextError, assert_git_context
 from handoff import generate_all_views, generate_handoff, generate_view
 from query import QueryError, compile_grep, parse_where, record_matches, summarize
@@ -518,24 +519,34 @@ def cmd_get(args: argparse.Namespace) -> int:
 
 def cmd_list(args: argparse.Namespace) -> int:
     try:
-        store, _contract = _open_store(args)
+        store, contract = _open_store(args)
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
     try:
-        payload_filters = parse_where(args.where)
+        where_filters = parse_where(args.where)
         grep = compile_grep(args.grep)
     except QueryError as exc:
         _emit_json({"error": "invalid_query", "message": str(exc)})
         return EXIT_ERROR
     try:
-        records = store.list_records(record_type=args.type, lifecycle_state=args.state)
+        # Derivation (e.g. `ready`) needs the whole record set -- a dependency
+        # can name a record of any type/state, so filtering before deriving
+        # would misreport real targets as dangling. Type/state filtering
+        # happens locally afterward instead of via store.list_records.
+        records = list(store.iter_records())
     except StoreError as exc:
         _emit_json({"error": "store", "message": str(exc)})
         return EXIT_ERROR
+    derived_map = compute_derived(records, contract)
+    records = attach_derived_all(records, derived_map)
+    if args.type:
+        records = [record for record in records if record["record_type"] == args.type]
+    if args.state:
+        records = [record for record in records if record["lifecycle_state"] == args.state]
     matched = [
         record
         for record in records
-        if record_matches(record, payload_filters=payload_filters, subject=args.subject, grep=grep)
+        if record_matches(record, where_filters=where_filters, subject=args.subject, grep=grep)
     ]
     out_records = matched if args.full else [summarize(record, grep=grep) for record in matched]
     _emit_json({"records": out_records, "count": len(matched)})
@@ -856,6 +867,7 @@ def cmd_handoff(args: argparse.Namespace) -> int:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
+    records = attach_derived_all(records, compute_derived(records, contract))
     try:
         markdown = generate_handoff(contract, records, store_root=_view_store_root(store))
     except ContractError as exc:
@@ -881,6 +893,7 @@ def cmd_view(args: argparse.Namespace) -> int:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
+    records = attach_derived_all(records, compute_derived(records, contract))
     if args.id:
         try:
             view_by_id(contract, args.id)
@@ -933,6 +946,7 @@ def cmd_hook_start(args: argparse.Namespace) -> int:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
+    records = attach_derived_all(records, compute_derived(records, contract))
     views = generate_all_views(contract, records, store_root=_view_store_root(store))
     handoff_id = next((view_id for view_id in views if view_id.endswith(":handoff")), None)
     _emit_json(
@@ -1089,9 +1103,10 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         metavar="payload.<field>=<value>",
         help=(
-            "Filter by payload field equality (repeatable; AND semantics). "
-            "The value is JSON-decoded when possible (true/42/\"x\"), otherwise "
-            "compared as a literal string."
+            "Filter by payload.<field> or derived.<field> equality (repeatable; "
+            "AND semantics). derived fields (e.g. derived.ready, derived.wave) are "
+            "computed at read time, never stored. The value is JSON-decoded when "
+            "possible (true/42/\"x\"), otherwise compared as a literal string."
         ),
     )
     p_list.add_argument(

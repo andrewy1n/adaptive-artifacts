@@ -22,7 +22,10 @@ import json
 import re
 from typing import Any, Iterable, Pattern
 
-WHERE_PREFIX = "payload."
+# derived is read-time only (see derive.py) but a --where clause treats it
+# like any other namespaced field -- an agent asking "what's ready" shouldn't
+# care that the value isn't stored on disk.
+WHERE_NAMESPACES = ("payload", "derived")
 DEFAULT_EXCERPT_LIMIT = 160
 
 
@@ -40,19 +43,24 @@ def _coerce_value(raw: str) -> Any:
         return raw
 
 
-def parse_where(raw: Iterable[str] | None) -> list[tuple[str, Any]]:
-    """Parse repeatable --where payload.<field>=<value> flags into (field, value) pairs."""
-    filters: list[tuple[str, Any]] = []
+def parse_where(raw: Iterable[str] | None) -> list[tuple[str, str, Any]]:
+    """Parse repeatable --where <namespace>.<field>=<value> flags into
+    (namespace, field, value) triples. namespace is "payload" or "derived"."""
+    filters: list[tuple[str, str, Any]] = []
     for item in raw or []:
         if "=" not in item:
-            raise QueryError(f"invalid --where {item!r}; expected payload.<field>=<value>")
+            raise QueryError(
+                f"invalid --where {item!r}; expected payload.<field>=<value> or derived.<field>=<value>"
+            )
         field, _, value = item.partition("=")
-        if not field.startswith(WHERE_PREFIX):
-            raise QueryError(f"invalid --where {item!r}; only payload.<field> is supported")
-        subfield = field[len(WHERE_PREFIX):]
+        namespace, sep, subfield = field.partition(".")
+        if not sep or namespace not in WHERE_NAMESPACES:
+            raise QueryError(
+                f"invalid --where {item!r}; only payload.<field> or derived.<field> is supported"
+            )
         if not subfield:
-            raise QueryError(f"invalid --where {item!r}; missing payload field name")
-        filters.append((subfield, _coerce_value(value)))
+            raise QueryError(f"invalid --where {item!r}; missing {namespace} field name")
+        filters.append((namespace, subfield, _coerce_value(value)))
     return filters
 
 
@@ -76,10 +84,10 @@ def _same(actual: Any, expected: Any) -> bool:
     return actual == expected
 
 
-def payload_matches(record: dict[str, Any], filters: list[tuple[str, Any]]) -> bool:
-    payload = record.get("payload") or {}
-    for field, value in filters:
-        actual = payload.get(field, _MISSING)
+def where_matches(record: dict[str, Any], filters: list[tuple[str, str, Any]]) -> bool:
+    for namespace, field, value in filters:
+        bucket = record.get(namespace) or {}
+        actual = bucket.get(field, _MISSING)
         if actual is _MISSING:
             # An absent field is not a null field; =null must not match "never set".
             return False
@@ -104,18 +112,19 @@ def body_matches(record: dict[str, Any], grep: Pattern[str] | None) -> bool:
 def record_matches(
     record: dict[str, Any],
     *,
-    payload_filters: list[tuple[str, Any]] | None = None,
+    where_filters: list[tuple[str, str, Any]] | None = None,
     subject: str | None = None,
     grep: Pattern[str] | None = None,
 ) -> bool:
     """AND all active predicates, cheapest first.
 
-    Payload/subject checks are dict lookups and string comparisons; the body
-    regex only runs on records that already survived those, so a payload-only
-    query never pays for a body search, and a query that also filters by
-    subject or payload never regex-scans bodies it was always going to reject.
+    Payload/derived/subject checks are dict lookups and string comparisons;
+    the body regex only runs on records that already survived those, so a
+    where-only query never pays for a body search, and a query that also
+    filters by subject or where never regex-scans bodies it was always going
+    to reject.
     """
-    if not payload_matches(record, payload_filters or []):
+    if not where_matches(record, where_filters or []):
         return False
     if not subject_matches(record, subject):
         return False
@@ -164,6 +173,8 @@ def summarize(record: dict[str, Any], *, grep: Pattern[str] | None = None) -> di
         "revision": record.get("revision"),
         "payload": record.get("payload"),
     }
+    if "derived" in record:
+        summary["derived"] = record["derived"]
     if excerpt:
         summary["body_excerpt"] = truncate(excerpt)
     return summary

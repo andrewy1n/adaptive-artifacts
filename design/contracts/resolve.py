@@ -14,6 +14,11 @@ ROOT = Path(__file__).resolve().parent
 FIXTURE_DIR = ROOT / "fixtures"
 RESOLVED_DIR = ROOT / "resolved"
 
+# Mirrors tools/runtime/contract.py. This module is the design-side resolver and
+# deliberately does not import the runtime, so the two must be changed together.
+SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of"})
+DERIVED_FIELDS = frozenset({"ready", "wave"})
+
 # Semantic dimensions owned exclusively by traits.
 RECORD_TRAIT_OWNED = {
     "lifecycle",
@@ -484,16 +489,25 @@ def validate_selection(selection: Any, candidates: list[dict], label: str) -> No
     if not isinstance(clauses, list):
         raise ResolveError(f"{label}: selection.all must be a list")
     for clause in clauses:
-        if not isinstance(clause, dict) or set(clause) != {"field", "equals"}:
+        if not isinstance(clause, dict) or "field" not in clause:
+            raise ResolveError(f"{label}: each selection clause requires a field")
+        operators = set(clause) - {"field"}
+        if len(operators) != 1 or not operators <= SELECTION_OPERATORS:
             raise ResolveError(
-                f"{label}: each selection clause requires only field and equals"
+                f"{label}: each selection clause needs exactly one of "
+                f"{sorted(SELECTION_OPERATORS)}"
             )
+        operator = operators.pop()
+        expected = clause[operator]
+        if operator == "any_of" and not isinstance(expected, list):
+            raise ResolveError(f"{label}: any_of takes a list")
+        wanted = expected if operator == "any_of" else [expected]
         field = clause["field"]
         if field == "lifecycle_state":
             invalid = [
                 record["id"]
                 for record in candidates
-                if clause["equals"] not in record["lifecycle"]["states"]
+                if any(value not in record["lifecycle"]["states"] for value in wanted)
             ]
         elif isinstance(field, str) and field.startswith("payload."):
             payload_field = field[len("payload.") :]
@@ -504,6 +518,11 @@ def validate_selection(selection: Any, candidates: list[dict], label: str) -> No
                 for record in candidates
                 if payload_field not in record.get("payload", [])
             ]
+        elif isinstance(field, str) and field.startswith("derived."):
+            derived_field = field[len("derived.") :]
+            if derived_field not in DERIVED_FIELDS:
+                raise ResolveError(f"{label}: unknown derived field {derived_field!r}")
+            invalid = []
         else:
             raise ResolveError(f"{label}: unsupported selection field {field!r}")
         if invalid:
