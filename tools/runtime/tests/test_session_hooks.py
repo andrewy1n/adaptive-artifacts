@@ -17,6 +17,7 @@ RUNTIME = TESTS.parent
 sys.path.insert(0, str(RUNTIME))
 
 from _paths import EXTENSION_ROOT, extension_root  # noqa: E402
+from record_file import dump_record, load_record  # noqa: E402
 from support import RESOLVED, make_git_repo, run_cli, sample_position_payload  # noqa: E402
 
 HOOKS = RUNTIME / "session_hooks.py"
@@ -94,10 +95,10 @@ class SessionHooksTests(unittest.TestCase):
                 cwd=self.repo,
             ).stdout
         )["record"]
-        path = self.store / "records" / "project__current-position" / f"{rec['id']}.json"
-        data = json.loads(path.read_text())
+        path = self.store / "records" / "project__current-position" / f"{rec['id']}.md"
+        data = load_record(path.read_text(), path)
         data["payload"]["position"] = "tampered"
-        path.write_text(json.dumps(data, indent=2) + "\n")
+        path.write_text(dump_record(data))
         hook = run_hook(
             "--cursor",
             "stop",
@@ -112,6 +113,95 @@ class SessionHooksTests(unittest.TestCase):
         body = json.loads(hook.stdout)
         self.assertIn("followup_message", body)
         self.assertIn("failed", body["followup_message"])
+
+    def test_start_omits_non_handoff_view_bodies_but_points_to_them(self):
+        r = run_cli("init", store=self.store, contract=RESOLVED, root=self.repo, cwd=self.repo)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        created = run_cli(
+            "create",
+            "--type",
+            "project:current-position",
+            "--subject",
+            "runtime",
+            "--payload",
+            sample_position_payload(),
+            store=self.store,
+            root=self.repo,
+            cwd=self.repo,
+        )
+        self.assertEqual(created.returncode, 0, created.stdout)
+        distinctive = "ZZZ-NOT-IN-INJECTED-CONTEXT-" + ("x" * 5000)
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "# Handoff\n\nsome handoff body\n",
+                        "views": {
+                            "project:handoff": "# Handoff\n\nsome handoff body\n",
+                            "project:big-view": f"# Big View\n\n{distinctive}\n",
+                        },
+                    }
+                ),
+                stderr="",
+            )
+            import session_hooks
+
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertIn("some handoff body", ctx)
+        self.assertNotIn(distinctive, ctx)
+        self.assertIn(str(self.store / "views" / "big-view.md"), ctx)
+        self.assertTrue((self.store / "views" / "handoff.md").is_file())
+        self.assertTrue((self.store / "views" / "big-view.md").is_file())
+        self.assertIn(distinctive, (self.store / "views" / "big-view.md").read_text())
+
+    def test_start_truncates_oversized_handoff_with_marker_and_path(self):
+        import session_hooks
+
+        oversized = "line one\n" + ("y" * (session_hooks.MAX_HANDOFF_BYTES + 500)) + "\nlast line\n"
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": oversized,
+                        "views": {"project:handoff": oversized},
+                    }
+                ),
+                stderr="",
+            )
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertIn("truncated", ctx)
+        self.assertIn(str(self.store / "views" / "handoff.md"), ctx)
+        self.assertNotIn("last line", ctx)
+        self.assertLess(len(ctx.encode("utf-8")), len(oversized.encode("utf-8")))
+
+    def test_start_claude_format_also_bounds_context(self):
+        r = run_cli("init", store=self.store, contract=RESOLVED, root=self.repo, cwd=self.repo)
+        self.assertEqual(r.returncode, 0, r.stdout)
+        created = run_cli(
+            "create",
+            "--type",
+            "project:current-position",
+            "--subject",
+            "runtime",
+            "--payload",
+            sample_position_payload(),
+            store=self.store,
+            root=self.repo,
+            cwd=self.repo,
+        )
+        self.assertEqual(created.returncode, 0, created.stdout)
+        hook = run_hook("--claude", "start", {"cwd": str(self.repo)}, self.repo)
+        self.assertEqual(hook.returncode, 0, hook.stderr + hook.stdout)
+        body = json.loads(hook.stdout)
+        ctx = body["hookSpecificOutput"]["additionalContext"]
+        self.assertIn("Derived view", ctx)
+        self.assertTrue((self.store / "views" / "handoff.md").is_file())
 
     def test_start_absent_store_still_emits_protocol(self):
         hook = run_hook(

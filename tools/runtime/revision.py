@@ -8,7 +8,13 @@ from typing import Any
 
 
 def canonical_body(record: dict[str, Any]) -> dict[str, Any]:
-    return {key: value for key, value in record.items() if key != "revision"}
+    # An empty body is omitted so a bodyless record hashes identically before and
+    # after the Markdown format migration.
+    return {
+        key: value
+        for key, value in record.items()
+        if key != "revision" and not (key == "body" and not value)
+    }
 
 
 def compute_revision(record: dict[str, Any]) -> str:

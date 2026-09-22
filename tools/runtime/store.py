@@ -7,7 +7,11 @@ superseded records, partial lineage, and path/layout tampering.
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
+import os
+import time
 import uuid
 from pathlib import Path
 from typing import Any, Iterator
@@ -21,7 +25,19 @@ from paths import (
     validate_record_id,
     validate_record_type,
 )
+from record_file import (
+    RECORD_GLOB,
+    RECORD_SUFFIX,
+    RecordFileError,
+    dump_record,
+    load_record,
+    prepare_record,
+)
 from revision import compute_revision, with_revision
+
+LOCK_FILENAME = ".write.lock"
+LOCK_RETRY_ATTEMPTS = 20
+LOCK_RETRY_INTERVAL_SECONDS = 0.05
 
 
 class StoreError(Exception):
@@ -44,12 +60,27 @@ class PartialStoreError(StoreError):
     pass
 
 
+class StoreLockError(StoreError):
+    pass
+
+
 def _load_json_file(path: Path, label: str) -> Any:
     try:
         with path.open() as handle:
             return json.load(handle)
     except json.JSONDecodeError as exc:
         raise StoreError(f"malformed JSON in {label}: {exc}") from exc
+
+
+def _load_record_file(path: Path) -> dict[str, Any]:
+    try:
+        text = path.read_text()
+    except OSError as exc:
+        raise StoreError(f"cannot read record file {path}: {exc}") from exc
+    try:
+        return load_record(text, path)
+    except RecordFileError as exc:
+        raise StoreError(str(exc)) from exc
 
 
 class Store:
@@ -63,6 +94,49 @@ class Store:
     def meta_path(self) -> Path:
         return self.root / "meta.json"
 
+    def lock_path(self) -> Path:
+        return self.root / LOCK_FILENAME
+
+    @contextlib.contextmanager
+    def write_lock(self) -> Iterator[None]:
+        """Advisory single-writer lock for the store, held for one mutating operation.
+
+        Fails fast (after a short bounded retry) instead of blocking forever, since a
+        stuck writer should surface as an error, not a hang.
+        """
+        self.root.mkdir(parents=True, exist_ok=True)
+        path = self.lock_path()
+        handle = path.open("a+")
+        try:
+            acquired = False
+            holder: str | None = None
+            for attempt in range(LOCK_RETRY_ATTEMPTS):
+                try:
+                    fcntl.flock(handle.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    acquired = True
+                    break
+                except BlockingIOError:
+                    handle.seek(0)
+                    holder = handle.read().strip() or None
+                    if attempt < LOCK_RETRY_ATTEMPTS - 1:
+                        time.sleep(LOCK_RETRY_INTERVAL_SECONDS)
+            if not acquired:
+                detail = f" (held by {holder})" if holder else ""
+                raise StoreLockError(f"store is locked for writing{detail}: {path}")
+            handle.seek(0)
+            handle.truncate()
+            handle.write(f"pid:{os.getpid()}\n")
+            handle.flush()
+            try:
+                yield
+            finally:
+                handle.seek(0)
+                handle.truncate()
+                handle.flush()
+                fcntl.flock(handle.fileno(), fcntl.LOCK_UN)
+        finally:
+            handle.close()
+
     def is_absent(self) -> bool:
         if not self.root.exists():
             return True
@@ -74,7 +148,7 @@ class Store:
         if self.meta_path().exists() and not self.meta_path().is_file():
             return True
         for base in (self.records_dir, self.history_dir):
-            if base.is_dir() and any(base.rglob("*.json")):
+            if base.is_dir() and any(base.rglob(RECORD_GLOB)):
                 return True
         return False
 
@@ -118,7 +192,7 @@ class Store:
             validate_record_id(record_id)
         except PathValidationError as exc:
             raise StoreError(str(exc)) from exc
-        return self.type_dir(record_type) / f"{record_id}.json"
+        return self.type_dir(record_type) / f"{record_id}{RECORD_SUFFIX}"
 
     def history_snapshot_path(self, record_type: str, record_id: str, revision: str) -> Path:
         try:
@@ -167,7 +241,7 @@ class Store:
         tmp.replace(path)
 
     def _history_content(self, record: dict[str, Any]) -> str:
-        return json.dumps(record, indent=2) + "\n"
+        return dump_record(record)
 
     def archive_history(self, record: dict[str, Any]) -> None:
         path = self.history_snapshot_path(
@@ -184,8 +258,8 @@ class Store:
     def iter_history(self) -> Iterator[tuple[Path, dict[str, Any]]]:
         if not self.history_dir.is_dir():
             return iter(())
-        for path in sorted(self.history_dir.rglob("*.json")):
-            snapshot = _load_json_file(path, str(path))
+        for path in sorted(self.history_dir.rglob(RECORD_GLOB)):
+            snapshot = _load_record_file(path)
             yield path, snapshot
 
     def write_record(
@@ -208,16 +282,16 @@ class Store:
                 )
             if archive_prior is not None:
                 self.archive_history(archive_prior)
-        stored = with_revision(record)
-        self._atomic_write(path, json.dumps(stored, indent=2) + "\n")
+        stored = with_revision(prepare_record(record))
+        self._atomic_write(path, dump_record(stored))
         return stored
 
     def create_record(self, record: dict[str, Any]) -> dict[str, Any]:
         path = self.record_path(record["record_type"], record["id"])
         if path.exists():
             raise StoreError(f"record already exists: {record['id']}")
-        stored = with_revision(record)
-        self._atomic_write(path, json.dumps(stored, indent=2) + "\n")
+        stored = with_revision(prepare_record(record))
+        self._atomic_write(path, dump_record(stored))
         return stored
 
     def record_exists(self, record_type: str, record_id: str) -> bool:
@@ -227,9 +301,7 @@ class Store:
         path = self.record_path(record_type, record_id)
         if not path.is_file():
             raise StoreError(f"unknown record: {record_id}")
-        record = _load_json_file(path, str(path))
-        if not isinstance(record, dict):
-            raise StoreError(f"record file must be a JSON object: {path}")
+        record = _load_record_file(path)
         if record.get("revision") != compute_revision(record):
             raise StoreError(f"revision tamper detected for {record_id}")
         return record
@@ -242,10 +314,8 @@ class Store:
         else:
             type_dirs = sorted(p for p in self.records_dir.iterdir() if p.is_dir())
         for type_dir in type_dirs:
-            for path in sorted(type_dir.glob("*.json")):
-                record = _load_json_file(path, str(path))
-                if not isinstance(record, dict):
-                    raise StoreError(f"record file must be a JSON object: {path}")
+            for path in sorted(type_dir.glob(RECORD_GLOB)):
+                record = _load_record_file(path)
                 if record.get("revision") != compute_revision(record):
                     raise StoreError(
                         f"revision tamper detected for {record.get('id', path.name)}"

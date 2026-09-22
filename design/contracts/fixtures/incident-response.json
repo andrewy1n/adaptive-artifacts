@@ -243,28 +243,44 @@
           "occupant": "investigation-question",
           "selection": {
             "all": []
-          }
+          },
+          "requires_payload": [
+            "motivation",
+            "owner"
+          ]
         },
         {
           "name": "observation",
           "occupant": "investigation-observation",
           "selection": {
             "all": []
-          }
+          },
+          "requires_payload": [
+            "source",
+            "what_was_observed"
+          ]
         },
         {
           "name": "finding",
           "occupant": "finding",
           "selection": {
             "all": []
-          }
+          },
+          "requires_payload": [
+            "claim",
+            "basis"
+          ]
         },
         {
           "name": "failed-attempt",
           "occupant": "failed-attempt",
           "selection": {
             "all": []
-          }
+          },
+          "requires_payload": [
+            "attempted_action",
+            "retry_when"
+          ]
         }
       ]
     }
@@ -364,6 +380,8 @@
         "epistemic-claim"
       ],
       "payload": [
+        "claim",
+        "basis",
         "confidence"
       ],
       "role_compatibility": {

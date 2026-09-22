@@ -40,6 +40,7 @@ from store import (
     StaleWriteError,
     Store,
     StoreError,
+    StoreLockError,
     StoreNotInitializedError,
 )
 from validation import (
@@ -78,6 +79,28 @@ def _load_payload(raw: str | None) -> dict[str, Any]:
     return data
 
 
+class _BodyArgError(Exception):
+    pass
+
+
+def _resolve_body(args: argparse.Namespace) -> tuple[bool, str]:
+    """Return (flag_was_given, text). Distinguishes an absent flag from --body ""."""
+    body = getattr(args, "body", None)
+    body_file = getattr(args, "body_file", None)
+    if body is not None and body_file is not None:
+        raise _BodyArgError("--body and --body-file are mutually exclusive")
+    if body is not None:
+        return True, body
+    if body_file is not None:
+        if body_file == "-":
+            return True, sys.stdin.read()
+        try:
+            return True, Path(body_file).read_text()
+        except OSError as exc:
+            raise _BodyArgError(f"cannot read --body-file {body_file!r}: {exc}") from exc
+    return False, ""
+
+
 def _handle_store_open_error(exc: Exception) -> int:
     if isinstance(exc, ContractBindingError):
         _emit_json({"error": "contract_drift", "message": str(exc)})
@@ -105,10 +128,11 @@ def _base_record(
     record_id: str,
     lifecycle_state: str | None = None,
     relationships: dict[str, list[str]] | None = None,
+    body: str = "",
 ) -> dict[str, Any]:
     if isinstance(stewardship, str):
         stewardship = {"steward": stewardship}
-    body: dict[str, Any] = {
+    record: dict[str, Any] = {
         "id": record_id,
         "record_type": record_type,
         "base_kind": record_def["base_kind"],
@@ -117,20 +141,21 @@ def _base_record(
         "lifecycle_state": lifecycle_state or initial_state(record_def),
         "relationships": relationships or {},
         "revision": "",
+        "body": body,
     }
     if requires_dimension(record_def, "stewardship"):
-        body["stewardship"] = stewardship
+        record["stewardship"] = stewardship
     if requires_dimension(record_def, "epistemic_status"):
-        body["epistemic_status"] = "asserted"
+        record["epistemic_status"] = "asserted"
     if requires_dimension(record_def, "adoption_or_deontic_status"):
-        body["adoption_or_deontic_status"] = "active"
+        record["adoption_or_deontic_status"] = "active"
     if requires_dimension(record_def, "time"):
         if record_def["base_kind"] == "claim":
-            body["time"] = {"as_of": _now()}
+            record["time"] = {"as_of": _now()}
         elif record_def["base_kind"] == "commitment":
-            body["time"] = {"effective_time": payload.get("effective_time") or _now()}
+            record["time"] = {"effective_time": payload.get("effective_time") or _now()}
         else:
-            body["time"] = {
+            record["time"] = {
                 "observed": payload.get("observed_time") or _now(),
                 "recorded": _now(),
             }
@@ -141,8 +166,8 @@ def _base_record(
                 sources.append(payload[field])
         if not sources:
             sources = [subject]
-        body["provenance"] = {"sources": sources}
-    return body
+        record["provenance"] = {"sources": sources}
+    return record
 
 
 def _supersede_preflight(
@@ -255,7 +280,11 @@ def cmd_init(args: argparse.Namespace) -> int:
     contract = load_contract(contract_path)
     store = Store(Path(args.store))
     try:
-        status = store.init(contract, contract_path.resolve())
+        with store.write_lock():
+            status = store.init(contract, contract_path.resolve())
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     except (PartialStoreError, StoreError) as exc:
         _emit_json({"error": "init_rejected", "message": str(exc)})
         return EXIT_ERROR
@@ -283,23 +312,34 @@ def cmd_create(args: argparse.Namespace) -> int:
     except StoreError as exc:
         _emit_json({"error": "invalid_rel", "message": str(exc)})
         return EXIT_ERROR
-    record_id = store.new_id()
-    record = _base_record(
-        record_type,
-        defs[record_type],
-        subject=subject,
-        stewardship=args.steward or "agent",
-        payload=payload,
-        record_id=record_id,
-        relationships=relationships or None,
-    )
-    known_ids = {item["id"] for item in store.iter_records()} | {record_id}
     try:
-        validate_record(contract, record, known_ids)
-    except ValidationError as exc:
-        _emit_json({"error": "validation", "message": str(exc)})
-        return EXIT_VALIDATION
-    stored = _persist_new(store, defs[record_type], record)
+        _, body_text = _resolve_body(args)
+    except _BodyArgError as exc:
+        _emit_json({"error": "invalid_body", "message": str(exc)})
+        return EXIT_ERROR
+    try:
+        with store.write_lock():
+            record_id = store.new_id()
+            record = _base_record(
+                record_type,
+                defs[record_type],
+                subject=subject,
+                stewardship=args.steward or "agent",
+                payload=payload,
+                record_id=record_id,
+                relationships=relationships or None,
+                body=body_text,
+            )
+            known_ids = {item["id"] for item in store.iter_records()} | {record_id}
+            try:
+                validate_record(contract, record, known_ids)
+            except ValidationError as exc:
+                _emit_json({"error": "validation", "message": str(exc)})
+                return EXIT_VALIDATION
+            stored = _persist_new(store, defs[record_type], record)
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json({"status": "created", "record": stored})
     return EXIT_OK
 
@@ -331,6 +371,11 @@ def cmd_update(args: argparse.Namespace) -> int:
             err_type = "invalid_transition"
         _emit_json({"error": err_type, "message": str(exc), "from": src, "to": dest})
         return EXIT_TRANSITION
+    try:
+        body_given, body_text = _resolve_body(args)
+    except _BodyArgError as exc:
+        _emit_json({"error": "invalid_body", "message": str(exc)})
+        return EXIT_ERROR
     record = dict(old)
     record["lifecycle_state"] = dest
     if requires_dimension(record_def, "epistemic_status") and dest in {
@@ -341,6 +386,8 @@ def cmd_update(args: argparse.Namespace) -> int:
         "retracted",
     }:
         record["epistemic_status"] = dest
+    if body_given:
+        record["body"] = body_text
     if args.payload:
         record["payload"] = dict(record.get("payload", {}))
         record["payload"].update(_load_payload(args.payload))
@@ -359,14 +406,18 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
     archive_prior = old if requires_history(record_def) else None
     try:
-        stored = store.write_record(
-            record,
-            expected_revision=args.expected_revision,
-            archive_prior=archive_prior,
-        )
+        with store.write_lock():
+            stored = store.write_record(
+                record,
+                expected_revision=args.expected_revision,
+                archive_prior=archive_prior,
+            )
     except StaleWriteError as exc:
         _emit_json({"error": "stale_write", "message": str(exc)})
         return EXIT_STALE
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json({"status": "updated", "record": stored})
     return EXIT_OK
 
@@ -391,6 +442,11 @@ def cmd_supersede(args: argparse.Namespace) -> int:
         _emit_json({"error": err_type, "message": str(exc)})
         return EXIT_TRANSITION
 
+    try:
+        body_given, body_text = _resolve_body(args)
+    except _BodyArgError as exc:
+        _emit_json({"error": "invalid_body", "message": str(exc)})
+        return EXIT_ERROR
     new_payload = dict(old.get("payload", {}))
     new_payload.update(_load_payload(args.payload))
     new_id = store.new_id()
@@ -402,6 +458,7 @@ def cmd_supersede(args: argparse.Namespace) -> int:
         payload=new_payload,
         record_id=new_id,
         relationships={"supersedes": [old["id"]]},
+        body=body_text if body_given else old.get("body", ""),
     )
     records = list(store.iter_records())
     try:
@@ -414,15 +471,19 @@ def cmd_supersede(args: argparse.Namespace) -> int:
     old_updated["lifecycle_state"] = "superseded"
     archive_prior = old if requires_history(record_def) else None
     try:
-        store.write_record(
-            old_updated,
-            expected_revision=args.expected_revision,
-            archive_prior=archive_prior,
-        )
+        with store.write_lock():
+            store.write_record(
+                old_updated,
+                expected_revision=args.expected_revision,
+                archive_prior=archive_prior,
+            )
+            stored = store.create_record(new_record)
     except StaleWriteError as exc:
         _emit_json({"error": "stale_write", "message": str(exc)})
         return EXIT_STALE
-    stored = store.create_record(new_record)
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json({"status": "superseded", "old": old["id"], "new": stored})
     return EXIT_OK
 
@@ -473,6 +534,11 @@ def cmd_correct(args: argparse.Namespace) -> int:
             }
         )
         return EXIT_VALIDATION
+    try:
+        body_given, body_text = _resolve_body(args)
+    except _BodyArgError as exc:
+        _emit_json({"error": "invalid_body", "message": str(exc)})
+        return EXIT_ERROR
     new_payload = dict(old.get("payload") or {})
     new_payload.update(_load_payload(args.payload))
     new_id = store.new_id()
@@ -484,14 +550,20 @@ def cmd_correct(args: argparse.Namespace) -> int:
         payload=new_payload,
         record_id=new_id,
         relationships={"corrects": [old["id"]]},
+        body=body_text if body_given else old.get("body", ""),
     )
-    known_ids = {item["id"] for item in store.iter_records()} | {new_id}
     try:
-        validate_record(contract, new_record, known_ids)
-    except ValidationError as exc:
-        _emit_json({"error": "validation", "message": str(exc)})
-        return EXIT_VALIDATION
-    stored = _persist_new(store, record_def, new_record)
+        with store.write_lock():
+            known_ids = {item["id"] for item in store.iter_records()} | {new_id}
+            try:
+                validate_record(contract, new_record, known_ids)
+            except ValidationError as exc:
+                _emit_json({"error": "validation", "message": str(exc)})
+                return EXIT_VALIDATION
+            stored = _persist_new(store, record_def, new_record)
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json({"status": "corrected", "old": old["id"], "new": stored})
     return EXIT_OK
 
@@ -521,6 +593,11 @@ def cmd_contradict(args: argparse.Namespace) -> int:
     if not subject:
         _emit_json({"error": "missing_subject"})
         return EXIT_ERROR
+    try:
+        body_given, body_text = _resolve_body(args)
+    except _BodyArgError as exc:
+        _emit_json({"error": "invalid_body", "message": str(exc)})
+        return EXIT_ERROR
     new_id = store.new_id()
     new_record = _base_record(
         old["record_type"],
@@ -529,6 +606,9 @@ def cmd_contradict(args: argparse.Namespace) -> int:
         stewardship=args.steward or old.get("stewardship") or "agent",
         payload=payload,
         record_id=new_id,
+        # A contradicting record is a counter-claim, not a revision of the original,
+        # so it must not inherit prose asserting what it disputes.
+        body=body_text,
     )
     updated = dict(old)
     rels = dict(updated.get("relationships") or {})
@@ -553,17 +633,21 @@ def cmd_contradict(args: argparse.Namespace) -> int:
     except ValidationError as exc:
         _emit_json({"error": "validation", "message": str(exc)})
         return EXIT_VALIDATION
-    stored = _persist_new(store, record_def, new_record)
     archive_prior = old if requires_history(record_def) else None
     try:
-        store.write_record(
-            updated,
-            expected_revision=args.expected_revision,
-            archive_prior=archive_prior,
-        )
+        with store.write_lock():
+            stored = _persist_new(store, record_def, new_record)
+            store.write_record(
+                updated,
+                expected_revision=args.expected_revision,
+                archive_prior=archive_prior,
+            )
     except StaleWriteError as exc:
         _emit_json({"error": "stale_write", "message": str(exc)})
         return EXIT_STALE
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json({"status": "contradicted", "old": updated["id"], "new": stored})
     return EXIT_OK
 
@@ -621,44 +705,58 @@ def cmd_capture(args: argparse.Namespace) -> int:
         return EXIT_VALIDATION
     defs = record_defs(contract)
     created: dict[str, dict[str, Any]] = {}
-    for record_type in _capture_create_order(bundle):
-        part = by_type[record_type]
-        payload = part.get("payload") or {}
-        subject = part.get("subject") or payload.get("subject")
-        if not subject:
-            _emit_json({"error": "missing_subject", "type": record_type})
-            return EXIT_ERROR
-        relationships: dict[str, list[str]] = {}
-        for link in bundle.get("relationships") or []:
-            if link["from"] != record_type:
-                continue
-            target = created.get(link["to"])
-            if target is None:
-                _emit_json(
-                    {
-                        "error": "bundle_order",
-                        "message": f"cannot link {record_type} before {link['to']}",
-                    }
+    try:
+        with store.write_lock():
+            for record_type in _capture_create_order(bundle):
+                part = by_type[record_type]
+                payload = part.get("payload") or {}
+                subject = part.get("subject") or payload.get("subject")
+                if not subject:
+                    _emit_json({"error": "missing_subject", "type": record_type})
+                    return EXIT_ERROR
+                body_value = part.get("body", "")
+                if body_value is None:
+                    body_value = ""
+                if not isinstance(body_value, str):
+                    _emit_json(
+                        {"error": "invalid_records", "message": f"body for {record_type} must be a string"}
+                    )
+                    return EXIT_ERROR
+                relationships: dict[str, list[str]] = {}
+                for link in bundle.get("relationships") or []:
+                    if link["from"] != record_type:
+                        continue
+                    target = created.get(link["to"])
+                    if target is None:
+                        _emit_json(
+                            {
+                                "error": "bundle_order",
+                                "message": f"cannot link {record_type} before {link['to']}",
+                            }
+                        )
+                        return EXIT_ERROR
+                    relationships.setdefault(link["type"], []).append(target["id"])
+                record_id = store.new_id()
+                record = _base_record(
+                    record_type,
+                    defs[record_type],
+                    subject=subject,
+                    stewardship=part.get("steward") or "agent",
+                    payload=payload,
+                    record_id=record_id,
+                    relationships=relationships or None,
+                    body=body_value,
                 )
-                return EXIT_ERROR
-            relationships.setdefault(link["type"], []).append(target["id"])
-        record_id = store.new_id()
-        record = _base_record(
-            record_type,
-            defs[record_type],
-            subject=subject,
-            stewardship=part.get("steward") or "agent",
-            payload=payload,
-            record_id=record_id,
-            relationships=relationships or None,
-        )
-        known_ids = {item["id"] for item in store.iter_records()} | {record_id}
-        try:
-            validate_record(contract, record, known_ids)
-        except ValidationError as exc:
-            _emit_json({"error": "validation", "message": str(exc)})
-            return EXIT_VALIDATION
-        created[record_type] = _persist_new(store, defs[record_type], record)
+                known_ids = {item["id"] for item in store.iter_records()} | {record_id}
+                try:
+                    validate_record(contract, record, known_ids)
+                except ValidationError as exc:
+                    _emit_json({"error": "validation", "message": str(exc)})
+                    return EXIT_VALIDATION
+                created[record_type] = _persist_new(store, defs[record_type], record)
+    except StoreLockError as exc:
+        _emit_json({"error": "locked", "message": str(exc)})
+        return EXIT_ERROR
     _emit_json(
         {
             "status": "captured",
@@ -823,6 +921,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Relationship as type:target_id (repeatable)",
     )
+    p_create.add_argument("--body", help="Markdown body text")
+    p_create.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
     p_create.set_defaults(func=cmd_create)
 
     p_update = sub.add_parser("update", help="Transition or mutate an existing record")
@@ -837,6 +937,8 @@ def build_parser() -> argparse.ArgumentParser:
         default=[],
         help="Relationship as type:target_id (repeatable)",
     )
+    p_update.add_argument("--body", help="Markdown body text (replaces the current body)")
+    p_update.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
     p_update.set_defaults(func=cmd_update)
 
     p_sup = sub.add_parser("supersede", help="Supersede with a new record id")
@@ -844,6 +946,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_sup.add_argument("--id", required=True)
     p_sup.add_argument("--expected-revision", required=True)
     p_sup.add_argument("--payload", help="JSON payload for successor")
+    p_sup.add_argument(
+        "--body", help="Markdown body for successor (default: carries the predecessor's body forward)"
+    )
+    p_sup.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
     p_sup.set_defaults(func=cmd_supersede)
 
     p_correct = sub.add_parser("correct", help="Append a correcting successor; original stays recorded")
@@ -852,6 +958,10 @@ def build_parser() -> argparse.ArgumentParser:
     p_correct.add_argument("--payload", help="JSON payload overrides for successor")
     p_correct.add_argument("--subject", help="Successor subject (defaults to original)")
     p_correct.add_argument("--steward", help="Steward identifier")
+    p_correct.add_argument(
+        "--body", help="Markdown body for successor (default: carries the predecessor's body forward)"
+    )
+    p_correct.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
     p_correct.set_defaults(func=cmd_correct)
 
     p_contradict = sub.add_parser(
@@ -864,6 +974,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_contradict.add_argument("--payload", required=True, help="JSON payload for the new record")
     p_contradict.add_argument("--transition", help="Optional lifecycle transition on the original")
     p_contradict.add_argument("--steward", help="Steward identifier")
+    p_contradict.add_argument(
+        "--body",
+        help="Markdown body for the contradicting record (default: carries the original's body forward)",
+    )
+    p_contradict.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
     p_contradict.set_defaults(func=cmd_contradict)
 
     p_capture = sub.add_parser("capture", help="Capture a bundle of records")
@@ -871,7 +986,7 @@ def build_parser() -> argparse.ArgumentParser:
     p_capture.add_argument(
         "--records",
         required=True,
-        help="JSON list of {type, subject, payload} objects",
+        help="JSON list of {type, subject, payload, body} objects (body is optional, default '')",
     )
     p_capture.set_defaults(func=cmd_capture)
 

@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import re
 
+from record_file import RECORD_SUFFIX
+
 SAFE_SEGMENT = re.compile(r"^[a-z][a-z0-9-]*$")
 RECORD_ID = re.compile(
     r"^rec-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$"
@@ -45,4 +47,4 @@ def revision_filename(revision: str) -> str:
     digest = revision[7:]
     if len(digest) != 64 or not re.fullmatch(r"[0-9a-f]{64}", digest):
         raise PathValidationError(f"invalid revision {revision!r}")
-    return f"sha256_{digest}.json"
+    return f"sha256_{digest}{RECORD_SUFFIX}"

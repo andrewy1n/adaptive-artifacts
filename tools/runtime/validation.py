@@ -3,13 +3,17 @@
 from __future__ import annotations
 
 import json
+import re
+import subprocess
 from pathlib import Path
 from typing import Any
 
+from record_file import RECORD_GLOB, RECORD_SUFFIX, RecordFileError, load_record
 from contract import (
     advertises_corrects,
     advertises_supersedes,
     allowed_transition,
+    contract_digest,
     has_trait,
     is_append_only,
     record_defs,
@@ -41,6 +45,36 @@ def validate_payload(record_def: dict[str, Any], record: dict[str, Any]) -> None
     if "blocking" in record_def.get("payload", []):
         if not isinstance(payload.get("blocking"), bool):
             raise ValidationError(f"{record['id']}: blocking must be bool")
+
+
+_SECTION_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
+
+
+def _body_sections(body: str) -> dict[str, str]:
+    sections: dict[str, list[str]] = {}
+    current: str | None = None
+    for line in (body or "").splitlines():
+        match = _SECTION_HEADING_RE.match(line)
+        if match:
+            current = match.group(1)
+            sections.setdefault(current, [])
+            continue
+        if current is not None:
+            sections[current].append(line)
+    return {name: "\n".join(lines) for name, lines in sections.items()}
+
+
+def validate_required_sections(record_def: dict[str, Any], record: dict[str, Any]) -> None:
+    required = record_def.get("required_sections") or []
+    if not required:
+        return
+    sections = _body_sections(record.get("body") or "")
+    for name in required:
+        content = sections.get(name)
+        if content is None:
+            raise ValidationError(f"{record['id']}: missing required section {name!r}")
+        if not content.strip():
+            raise ValidationError(f"{record['id']}: required section {name!r} is empty")
 
 
 def validate_relationships(
@@ -88,6 +122,7 @@ def validate_record(
         )
     validate_payload(record_def, record)
     validate_relationships(record_def, record, known_ids or {record["id"]})
+    validate_required_sections(record_def, record)
 
 
 def position_key(record: dict[str, Any]) -> tuple[str, str]:
@@ -200,15 +235,14 @@ def validate_history(store_root: Path, records: list[dict[str, Any]], errors: li
     if not history_root.is_dir():
         return
     known_ids = {record["id"] for record in records}
-    for path in sorted(history_root.rglob("*.json")):
+    for path in sorted(history_root.rglob(RECORD_GLOB)):
         try:
-            with path.open() as handle:
-                snapshot = json.load(handle)
-        except json.JSONDecodeError as exc:
-            errors.append(f"history malformed JSON {path}: {exc}")
+            snapshot = load_record(path.read_text(), path)
+        except RecordFileError as exc:
+            errors.append(f"history malformed record file {path}: {exc}")
             continue
         if not isinstance(snapshot, dict):
-            errors.append(f"history snapshot must be a JSON object: {path}")
+            errors.append(f"history snapshot must be a record object: {path}")
             continue
         if snapshot.get("revision") != compute_revision(snapshot):
             errors.append(f"history tamper detected: {path}")
@@ -223,10 +257,142 @@ def validate_history(store_root: Path, records: list[dict[str, Any]], errors: li
                 store_root
                 / "records"
                 / type_dir_name(record_type)
-                / f"{record_id}.json"
+                / f"{record_id}{RECORD_SUFFIX}"
             )
             if not expected.is_file():
                 errors.append(f"history snapshot {path.name}: no live record for {record_id}")
+
+
+def _run_git(args: list[str]) -> subprocess.CompletedProcess | None:
+    try:
+        return subprocess.run(args, capture_output=True, text=True)
+    except OSError:
+        return None
+
+
+def _git_toplevel(path: Path) -> Path | None:
+    result = _run_git(["git", "-C", str(path), "rev-parse", "--show-toplevel"])
+    if result is None or result.returncode != 0:
+        return None
+    return Path(result.stdout.strip())
+
+
+def _git_head_exists(repo_root: Path) -> bool:
+    result = _run_git(["git", "-C", str(repo_root), "rev-parse", "--verify", "-q", "HEAD"])
+    return result is not None and result.returncode == 0
+
+
+def _meta_digest_mismatch(store_root: Path, meta_path: Path) -> str | None:
+    """Check whether a modified meta.json is a sanctioned contract re-pin.
+
+    Returns None when the working-tree meta.json's `contract_digest` matches the
+    digest of the resolved contract file its own `contract` field points at --
+    that is the one legitimate reason meta.json changes (a contract swap during
+    development). Any other case (mismatched digest, missing fields, unreadable
+    or unparseable contract, malformed meta.json) returns a specific description
+    of what's wrong so the violation isn't reported as a generic tamper.
+    """
+    try:
+        text = meta_path.read_text()
+    except OSError as exc:
+        return f"meta.json unreadable: {exc}"
+    try:
+        meta = json.loads(text)
+    except json.JSONDecodeError as exc:
+        return f"meta.json is not valid JSON: {exc}"
+    if not isinstance(meta, dict):
+        return "meta.json is not a JSON object"
+    declared_digest = meta.get("contract_digest")
+    contract_ref = meta.get("contract")
+    if not isinstance(declared_digest, str) or not declared_digest:
+        return "meta.json is missing contract_digest"
+    if not isinstance(contract_ref, str) or not contract_ref:
+        return "meta.json is missing its contract reference"
+    # meta.json's "contract" field is stored relative to store_root's parent
+    # (see Store.init); an absolute contract_ref resolves to itself either way.
+    contract_path = store_root.resolve().parent / contract_ref
+    try:
+        contract_text = contract_path.read_text()
+    except OSError as exc:
+        return f"meta.json points at an unreadable contract ({contract_path}): {exc}"
+    try:
+        contract_data = json.loads(contract_text)
+    except json.JSONDecodeError as exc:
+        return f"meta.json points at an unparseable contract ({contract_path}): {exc}"
+    if not isinstance(contract_data, dict):
+        return f"resolved contract at {contract_path} is not a JSON object"
+    actual_digest = contract_digest(contract_data)
+    if declared_digest != actual_digest:
+        return (
+            f"meta.json contract_digest {declared_digest!r} does not match the "
+            f"resolved contract on disk at {contract_path} (actual digest {actual_digest!r})"
+        )
+    return None
+
+
+def validate_immutability(store_root: Path, errors: list[str]) -> None:
+    """Fail on any store path that exists in git HEAD but was changed or removed
+    in the working tree. Supersede is the only sanctioned mutation path, and it
+    always writes a new record id -- so any in-place change to a path git already
+    committed is a violation by construction. New, uncommitted paths are fine.
+
+    History snapshots (`Store.archive_history`/`Store.iter_history`) are
+    write-once: it refuses to overwrite an existing snapshot with different
+    content and no-ops on a byte-identical rewrite. So they need no
+    special-casing here -- a committed snapshot changing at all is already a
+    tamper by the same rule as a record file.
+
+    meta.json is the one carve-out: it legitimately changes whenever the
+    resolved contract does, since it pins `contract_digest`. A modification is
+    let through only when the new digest matches the resolved contract file
+    meta.json itself points at -- a deleted meta.json, or one whose digest
+    matches nothing real, is still a violation (see `_meta_digest_mismatch`).
+    """
+    if not store_root.exists():
+        return
+    repo_root = _git_toplevel(store_root)
+    if repo_root is None:
+        return
+    if not _git_head_exists(repo_root):
+        return
+    try:
+        rel = store_root.resolve().relative_to(repo_root.resolve())
+    except ValueError:
+        return
+    meta_rel = (rel / "meta.json").as_posix()
+    result = _run_git(
+        [
+            "git",
+            "-C",
+            str(repo_root),
+            "diff",
+            "--name-status",
+            "HEAD",
+            "--",
+            rel.as_posix(),
+        ]
+    )
+    if result is None or result.returncode != 0:
+        return
+    for line in result.stdout.splitlines():
+        line = line.rstrip("\n")
+        if not line.strip():
+            continue
+        parts = line.split("\t")
+        status = parts[0]
+        if status.startswith("A"):
+            continue
+        offending = parts[1] if len(parts) > 1 else line
+        if offending == meta_rel and not status.startswith("D"):
+            detail = _meta_digest_mismatch(store_root, store_root / "meta.json")
+            if detail is None:
+                continue
+            errors.append(f"immutability violation: {detail}")
+            continue
+        errors.append(
+            f"immutability violation: committed store path modified or deleted "
+            f"(git status {status}): {offending}"
+        )
 
 
 def load_records_for_validation(store_root: Path, errors: list[str]) -> list[dict[str, Any]]:
@@ -234,15 +400,14 @@ def load_records_for_validation(store_root: Path, errors: list[str]) -> list[dic
     if not records_dir.is_dir():
         return []
     records: list[dict[str, Any]] = []
-    for path in sorted(records_dir.rglob("*.json")):
+    for path in sorted(records_dir.rglob(RECORD_GLOB)):
         try:
-            with path.open() as handle:
-                record = json.load(handle)
-        except json.JSONDecodeError as exc:
-            errors.append(f"record malformed JSON {path}: {exc}")
+            record = load_record(path.read_text(), path)
+        except RecordFileError as exc:
+            errors.append(f"record malformed record file {path}: {exc}")
             continue
         if not isinstance(record, dict):
-            errors.append(f"record file must be a JSON object: {path}")
+            errors.append(f"record file must be a record object: {path}")
             continue
         if record.get("revision") != compute_revision(record):
             errors.append(f"record revision tamper detected: {path}")
@@ -293,6 +458,7 @@ def validate_store(
     if store_root is not None:
         validate_history(store_root, records, errors)
         validate_append_only_history(store_root, records, defs, errors)
+        validate_immutability(store_root, errors)
     return errors
 
 

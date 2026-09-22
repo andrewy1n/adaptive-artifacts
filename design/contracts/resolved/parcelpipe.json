@@ -7,7 +7,7 @@
     "resolved_contract_format": "0.3.0",
     "traits_version": "0.3.0",
     "backends_version": "0.4.0",
-    "design_digest": "sha256:41973f56486e8b401dfda77271343810be16701940ea201478b8dac93cd10307",
+    "design_digest": "sha256:20d6db683d4f054f7e96ef5acdc45d98a2706531707d88ccbbda5eb8318c6373",
     "source_lock": {
       "catalog_version": "0.6.0",
       "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
@@ -884,14 +884,16 @@
             "stewarded",
             "open-question"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "motivation",
+            "owner"
+          ],
           "base_kind": "question",
           "selection": {
             "all": []
           },
           "occupant": "project:investigation-question",
           "candidates": [
-            "project:continuity-question",
             "project:investigation-question"
           ]
         },
@@ -901,7 +903,10 @@
             "entity",
             "occurrence"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "source",
+            "what_was_observed"
+          ],
           "base_kind": "observation",
           "selection": {
             "all": []
@@ -917,7 +922,10 @@
             "entity",
             "epistemic-claim"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "claim",
+            "basis"
+          ],
           "base_kind": "claim",
           "selection": {
             "all": []
@@ -934,15 +942,17 @@
             "occurrence",
             "evidence-linked"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "attempted_action",
+            "retry_when"
+          ],
           "base_kind": "event",
           "selection": {
             "all": []
           },
           "occupant": "project:failed-attempt",
           "candidates": [
-            "project:failed-attempt",
-            "project:check-run"
+            "project:failed-attempt"
           ]
         }
       ]

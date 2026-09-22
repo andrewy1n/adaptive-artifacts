@@ -31,6 +31,7 @@ from support import (  # noqa: E402
 )
 from contract import contract_digest, load_contract  # noqa: E402
 from handoff import generate_handoff  # noqa: E402
+from record_file import dump_record, load_record  # noqa: E402
 from store import Store, StaleWriteError  # noqa: E402
 from validation import validate_store  # noqa: E402
 
@@ -416,7 +417,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
             "project:active-commitment", rec["id"], prior_revision
         )
         self.assertTrue(history_path.is_file())
-        snapshot = json.loads(history_path.read_text())
+        snapshot = load_record(history_path.read_text(), history_path)
         self.assertEqual(snapshot["lifecycle_state"], "active")
         self.assertEqual(snapshot["revision"], prior_revision)
 
@@ -446,7 +447,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
             "project:current-position", first["id"], prior_revision
         )
         self.assertTrue(history_path.is_file())
-        snapshot = json.loads(history_path.read_text())
+        snapshot = load_record(history_path.read_text(), history_path)
         self.assertEqual(snapshot["lifecycle_state"], "active")
 
     def test_tampered_history_fails_validation(self):
@@ -470,9 +471,9 @@ class ContinuityRuntimeTests(unittest.TestCase):
         )
         store = Store(self.store)
         for path, _ in store.iter_history():
-            data = json.loads(path.read_text())
+            data = load_record(path.read_text(), path)
             data["payload"]["outcome"] = "tampered"
-            path.write_text(json.dumps(data, indent=2) + "\n")
+            path.write_text(dump_record(data))
             break
         r = run_cli("validate", store=self.store)
         self.assertEqual(r.returncode, 4)
@@ -574,9 +575,9 @@ class ContinuityRuntimeTests(unittest.TestCase):
             sample_position_payload(),
         )
         path = Store(self.store).record_path("project:current-position", rec["id"])
-        data = json.loads(path.read_text())
+        data = load_record(path.read_text(), path)
         data["payload"]["position"] = "tampered"
-        path.write_text(json.dumps(data, indent=2) + "\n")
+        path.write_text(dump_record(data))
         r = run_cli(
             "get",
             "--type",
@@ -825,7 +826,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
         self.store.mkdir(parents=True)
         records = self.store / "records" / "continuity__current-position"
         records.mkdir(parents=True)
-        (records / "rec-00000000-0000-4000-8000-000000000001.json").write_text("{}")
+        (records / "rec-00000000-0000-4000-8000-000000000001.md").write_text("{}")
         r = run_cli("validate", store=self.store)
         self.assertEqual(r.returncode, 1)
         self.assertIn("store_not_ready", r.stdout)
@@ -838,7 +839,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
         self.store.mkdir(parents=True)
         records = self.store / "records" / "continuity__current-position"
         records.mkdir(parents=True)
-        (records / "rec-00000000-0000-4000-8000-000000000002.json").write_text("{}")
+        (records / "rec-00000000-0000-4000-8000-000000000002.md").write_text("{}")
         partial = run_cli("hook-start", store=self.store)
         self.assertEqual(partial.returncode, 1)
         self.assertIn("store_not_ready", partial.stdout)
@@ -937,7 +938,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
             from revision import compute_revision
 
             snapshot["revision"] = compute_revision(snapshot)
-            path.write_text(json.dumps(snapshot, indent=2) + "\n")
+            path.write_text(dump_record(snapshot))
             break
         r = run_cli("validate", store=self.store)
         self.assertEqual(r.returncode, 4)
@@ -957,7 +958,9 @@ class ContinuityRuntimeTests(unittest.TestCase):
         path.write_text("{not-json")
         r = run_cli("validate", store=self.store)
         self.assertEqual(r.returncode, 4)
-        self.assertTrue(any("malformed JSON" in e for e in load_json(r.stdout)["errors"]))
+        self.assertTrue(
+            any("malformed record file" in e for e in load_json(r.stdout)["errors"])
+        )
 
 
 if __name__ == "__main__":

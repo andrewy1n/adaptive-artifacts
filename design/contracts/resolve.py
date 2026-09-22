@@ -34,6 +34,7 @@ RECORD_TRAIT_COMPOSE_ALLOWED = {
     "capture",
     "read_policy",
     "base_kind",
+    "required_sections",
 }
 
 RECORD_PATTERN_ALLOWED = {
@@ -48,6 +49,7 @@ RECORD_PATTERN_ALLOWED = {
     "read_policy",
     "payload",
     "namespace",
+    "required_sections",
 }
 
 VIEW_ROLE_ALLOWED = {
@@ -359,6 +361,7 @@ def compose_record(
         "capture": record.get("capture"),
         "read_policy": record.get("read_policy"),
         "storage_capabilities": caps,
+        "required_sections": list(record.get("required_sections") or []) or None,
     }
     return {key: value for key, value in composed_record.items() if value is not None}
 
@@ -417,6 +420,8 @@ def compose_pattern_record(record: dict, traits: dict) -> dict:
     read_policy = normalize_read(record, label)
     if read_policy:
         trait_shaped["read_policy"] = read_policy
+    if record.get("required_sections"):
+        trait_shaped["required_sections"] = list(record["required_sections"])
     composed = compose_record(trait_shaped, namespace, traits, experimental=False)
     composed["pattern"] = pattern
     for key in ("purpose", "canonical_for", "replica_of", "derived_from"):
@@ -493,6 +498,7 @@ def resolve_views(
     occupancy: dict,
     view_params: dict,
     namespace: str = "project",
+    design_label: str = "<unknown design>",
 ) -> list[dict]:
     views = []
     for view in view_specs:
@@ -527,6 +533,11 @@ def resolve_views(
             role_name = role.get("name")
             if not role_name:
                 raise ResolveError(f"{view_id}: role missing name")
+            if not role.get("requires_payload"):
+                raise ResolveError(
+                    f"{view_id}.{role_name}: requires_payload must be a non-empty "
+                    f"list (design {design_label})"
+                )
             occupant_ref = chosen.get(role_name, role.get("occupant"))
             if not occupant_ref:
                 raise ResolveError(f"{view_id}.{role_name}: missing occupant")
@@ -795,7 +806,12 @@ def check_qualified_project_refs(design: dict) -> None:
         parse_qualified(key, f"{project} occupancy")
 
 
-def resolve_project(design: dict, catalog: dict) -> dict:
+def resolve_project(
+    design: dict, catalog: dict, design_path: str | Path | None = None
+) -> dict:
+    design_label = str(design_path) if design_path is not None else design.get(
+        "project", "<unknown project>"
+    )
     validate_project_design_format(design, catalog)
     if "families" in design:
         raise ResolveError(
@@ -822,6 +838,7 @@ def resolve_project(design: dict, catalog: dict) -> dict:
         records,
         design.get("occupancy", {}),
         design.get("view_params", {}),
+        design_label=design_label,
     )
     bundles = resolve_bundles(design.get("bundles") or [], records)
     experimental = compose_experimental_candidates(design, catalog["traits"], views)
@@ -860,7 +877,7 @@ def write_contract(contract: dict, path: Path) -> None:
 
 def resolve_fixture(path: Path, catalog: dict | None = None) -> dict:
     catalog = catalog or load_catalog()
-    return resolve_project(load_json(path), catalog)
+    return resolve_project(load_json(path), catalog, design_path=path)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -877,7 +894,7 @@ def main(argv: list[str] | None = None) -> int:
         print(json.dumps(build_source_lock(catalog), indent=2))
         return 0
     if args.cmd == "project":
-        contract = resolve_project(load_json(args.design), catalog)
+        contract = resolve_project(load_json(args.design), catalog, design_path=args.design)
         if args.out:
             write_contract(contract, args.out)
             print(f"wrote {args.out}")

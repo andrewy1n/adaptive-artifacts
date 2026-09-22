@@ -7,7 +7,7 @@
     "resolved_contract_format": "0.3.0",
     "traits_version": "0.3.0",
     "backends_version": "0.4.0",
-    "design_digest": "sha256:a41a946b358e0bbc40310457dea98378fa4447f8bb2122baddd197c9c64a13da",
+    "design_digest": "sha256:5b9ceffa948824524ba0b739a420f05b8ed4a1ad53eb3d9b40622df279d5d29f",
     "source_lock": {
       "catalog_version": "0.6.0",
       "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
@@ -727,14 +727,16 @@
             "stewarded",
             "open-question"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "motivation",
+            "owner"
+          ],
           "base_kind": "question",
           "selection": {
             "all": []
           },
           "occupant": "project:investigation-question",
           "candidates": [
-            "project:continuity-question",
             "project:investigation-question"
           ]
         },
@@ -744,7 +746,10 @@
             "entity",
             "occurrence"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "source",
+            "what_was_observed"
+          ],
           "base_kind": "observation",
           "selection": {
             "all": []
@@ -760,7 +765,10 @@
             "entity",
             "epistemic-claim"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "claim",
+            "basis"
+          ],
           "base_kind": "claim",
           "selection": {
             "all": []
@@ -777,7 +785,10 @@
             "occurrence",
             "evidence-linked"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "attempted_action",
+            "retry_when"
+          ],
           "base_kind": "event",
           "selection": {
             "all": []
@@ -923,6 +934,8 @@
       ],
       "payload": [
         "subject",
+        "claim",
+        "basis",
         "confidence"
       ],
       "lifecycle": {

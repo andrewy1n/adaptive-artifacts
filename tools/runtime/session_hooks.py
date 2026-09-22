@@ -19,6 +19,12 @@ PROTOCOL = (
     "before finishing."
 )
 
+# Session-start context must stay cheap: only the handoff view is injected in
+# full. Above this many bytes it gets truncated (see _truncate_handoff) since
+# an oversized handoff is what caused the whole injected context to blow past
+# the host harness's preview limit and get silently dropped.
+MAX_HANDOFF_BYTES = 16384
+
 
 def artifacts_cli() -> Path:
     return extension_root() / "tools" / "artifacts.py"
@@ -51,6 +57,27 @@ def _write_views(store: Path, views: dict[str, str]) -> None:
         (views_dir / name).write_text(markdown)
 
 
+def _view_file_path(store: Path, view_id: str) -> Path:
+    name = view_id.split(":")[-1] + ".md"
+    return store / "views" / name
+
+
+def _truncate_handoff(handoff: str, full_path: Path) -> str:
+    encoded = handoff.encode("utf-8")
+    if len(encoded) <= MAX_HANDOFF_BYTES:
+        return handoff
+    head = encoded[:MAX_HANDOFF_BYTES]
+    boundary = head.rfind(b"\n")
+    if boundary > 0:
+        head = head[:boundary]
+    text = head.decode("utf-8", errors="ignore").rstrip()
+    return (
+        f"{text}\n\n"
+        f"[... handoff truncated at {MAX_HANDOFF_BYTES} bytes; "
+        f"full handoff at {full_path} ...]"
+    )
+
+
 def cmd_start(fmt: str, data: dict) -> dict:
     root = _root_from_hook(data, fmt)
     result = _run_cli(root, "hook-start")
@@ -68,12 +95,24 @@ def cmd_start(fmt: str, data: dict) -> dict:
         parts = [PROTOCOL]
         handoff = body.get("handoff") or ""
         if handoff:
-            parts.extend(["", handoff])
+            handoff_id = next(
+                (view_id for view_id in views if view_id.endswith(":handoff")),
+                None,
+            )
+            handoff_path = (
+                _view_file_path(store, handoff_id)
+                if handoff_id
+                else store / "views" / "handoff.md"
+            )
+            parts.extend(["", _truncate_handoff(handoff, handoff_path)])
         if isinstance(views, dict):
-            for view_id, markdown in views.items():
-                if view_id.endswith(":handoff"):
-                    continue
-                parts.extend(["", markdown])
+            other_paths = [
+                str(_view_file_path(store, view_id))
+                for view_id in views
+                if not view_id.endswith(":handoff")
+            ]
+            if other_paths:
+                parts.extend(["", "Full views on disk: " + ", ".join(other_paths)])
         ctx = "\n".join(parts).strip() + "\n"
     if fmt == "--claude":
         return {

@@ -34,8 +34,7 @@ def _title(value: str) -> str:
 def _record_line(record: dict[str, Any], role: dict[str, Any]) -> str:
     payload = record.get("payload") or {}
     skip = {"scope", "subject", "blocking", "owner"}
-    preferred = [field for field in (role.get("requires_payload") or []) if field not in skip]
-    ordered = preferred + [field for field in payload if field not in skip and field not in preferred]
+    ordered = [field for field in (role.get("requires_payload") or []) if field not in skip]
     bits = []
     for field in ordered:
         value = payload.get(field)

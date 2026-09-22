@@ -7,7 +7,7 @@
     "resolved_contract_format": "0.3.0",
     "traits_version": "0.3.0",
     "backends_version": "0.4.0",
-    "design_digest": "sha256:3d774684219edcf03f2a393a717da3e2ddb932fbad2d8b8ae27002c512067f5c",
+    "design_digest": "sha256:a3f3413c578adfd180f3319e2689cf8486826bdb4e40c97c30e3d324c34b0d0b",
     "source_lock": {
       "catalog_version": "0.6.0",
       "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
@@ -727,14 +727,16 @@
             "stewarded",
             "open-question"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "motivation",
+            "owner"
+          ],
           "base_kind": "question",
           "selection": {
             "all": []
           },
           "occupant": "project:investigation-question",
           "candidates": [
-            "project:continuity-question",
             "project:investigation-question"
           ]
         },
@@ -744,7 +746,10 @@
             "entity",
             "occurrence"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "source",
+            "what_was_observed"
+          ],
           "base_kind": "observation",
           "selection": {
             "all": []
@@ -760,7 +765,10 @@
             "entity",
             "epistemic-claim"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "claim",
+            "basis"
+          ],
           "base_kind": "claim",
           "selection": {
             "all": []
@@ -777,7 +785,10 @@
             "occurrence",
             "evidence-linked"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "attempted_action",
+            "retry_when"
+          ],
           "base_kind": "event",
           "selection": {
             "all": []

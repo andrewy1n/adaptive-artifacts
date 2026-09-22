@@ -7,7 +7,7 @@
     "resolved_contract_format": "0.3.0",
     "traits_version": "0.3.0",
     "backends_version": "0.4.0",
-    "design_digest": "sha256:146b4157f7928ab1464e08d86e079a25d05f37f1f9ebb835273dbe5bd7ba9310",
+    "design_digest": "sha256:38d7b7340dd2a0885d55053fc5c401cc716c16eed73d6e765d7b8bc1df23ef96",
     "source_lock": {
       "catalog_version": "0.6.0",
       "catalog": "sha256:878d4c6288904de6321531a9c566a4a94a15945ca31c5e4d44d83f51361e835b",
@@ -727,14 +727,16 @@
             "stewarded",
             "open-question"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "motivation",
+            "owner"
+          ],
           "base_kind": "question",
           "selection": {
             "all": []
           },
           "occupant": "project:investigation-question",
           "candidates": [
-            "project:continuity-question",
             "project:investigation-question"
           ]
         },
@@ -744,7 +746,10 @@
             "entity",
             "occurrence"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "source",
+            "what_was_observed"
+          ],
           "base_kind": "observation",
           "selection": {
             "all": []
@@ -760,7 +765,10 @@
             "entity",
             "epistemic-claim"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "claim",
+            "basis"
+          ],
           "base_kind": "claim",
           "selection": {
             "all": []
@@ -777,7 +785,10 @@
             "occurrence",
             "evidence-linked"
           ],
-          "requires_payload": [],
+          "requires_payload": [
+            "attempted_action",
+            "retry_when"
+          ],
           "base_kind": "event",
           "selection": {
             "all": []
@@ -870,6 +881,8 @@
       ],
       "payload": [
         "subject",
+        "claim",
+        "basis",
         "preregistration",
         "test_status"
       ],
@@ -937,6 +950,8 @@
       ],
       "payload": [
         "subject",
+        "source",
+        "what_was_observed",
         "run",
         "instrument"
       ],
