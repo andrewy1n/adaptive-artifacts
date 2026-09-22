@@ -109,12 +109,52 @@ def body_matches(record: dict[str, Any], grep: Pattern[str] | None) -> bool:
     return grep.search(record.get("body") or "") is not None
 
 
+def has_inbound(record: dict[str, Any], rel_type: str) -> bool:
+    """True if `derived.referenced_by` (see derive.compute_inverse) has at
+    least one source recorded under `rel_type`."""
+    by_type = (record.get("derived") or {}).get("referenced_by") or {}
+    return bool(by_type.get(rel_type))
+
+
+def within_time_range(record: dict[str, Any], since: str | None, until: str | None) -> bool:
+    """`recorded_at` string-compares against ISO-8601 bounds (valid because
+    `_now()` is fixed-width UTC). A record with no `recorded_at` (written
+    before this field existed) fails any bounded query -- conservative,
+    since "unknown when" cannot be asserted to fall inside a range."""
+    if since is None and until is None:
+        return True
+    recorded_at = record.get("recorded_at")
+    if not recorded_at:
+        return False
+    if since is not None and recorded_at < since:
+        return False
+    if until is not None and recorded_at > until:
+        return False
+    return True
+
+
+def order_by_recorded_at(
+    records: list[dict[str, Any]], *, reverse: bool = False
+) -> list[dict[str, Any]]:
+    """Stable sort by `recorded_at`; records missing it (pre-existing,
+    backward-compat) sort first regardless of `reverse` -- "unknown when" is
+    not "most recent", so `reverse` must only flip ordering among records
+    that actually have a timestamp, not push the unknowns to the other end."""
+    missing = [record for record in records if not record.get("recorded_at")]
+    present = [record for record in records if record.get("recorded_at")]
+    present.sort(key=lambda record: record["recorded_at"], reverse=reverse)
+    return missing + present
+
+
 def record_matches(
     record: dict[str, Any],
     *,
     where_filters: list[tuple[str, str, Any]] | None = None,
     subject: str | None = None,
     grep: Pattern[str] | None = None,
+    since: str | None = None,
+    until: str | None = None,
+    has_inbound_types: list[str] | None = None,
 ) -> bool:
     """AND all active predicates, cheapest first.
 
@@ -128,6 +168,11 @@ def record_matches(
         return False
     if not subject_matches(record, subject):
         return False
+    if not within_time_range(record, since, until):
+        return False
+    for rel_type in has_inbound_types or []:
+        if not has_inbound(record, rel_type):
+            return False
     if not body_matches(record, grep):
         return False
     return True
@@ -172,6 +217,7 @@ def summarize(record: dict[str, Any], *, grep: Pattern[str] | None = None) -> di
         "lifecycle_state": record.get("lifecycle_state"),
         "revision": record.get("revision"),
         "payload": record.get("payload"),
+        "recorded_at": record.get("recorded_at"),
     }
     if "derived" in record:
         summary["derived"] = record["derived"]

@@ -1,10 +1,19 @@
-"""Read-time derivation of `ready`/`wave` from the `staged-progress` `depends_on` graph.
+"""Read-time derivation of `ready`/`wave`/`referenced_by` from record relationships.
 
-These two values used to be hand-maintained payload integers. They drifted from
-reality because nothing computed or checked them. This module computes them
-instead, purely from data already on disk (lifecycle_state + the `depends_on`
-relationship) -- so they can never drift, and are never themselves persisted
-(see the HARD CONSTRAINTS note below).
+`ready`/`wave` come from the `staged-progress` `depends_on` graph. They used to
+be hand-maintained payload integers. They drifted from reality because nothing
+computed or checked them. This module computes them instead, purely from data
+already on disk (lifecycle_state + the `depends_on` relationship) -- so they
+can never drift, and are never themselves persisted (see the HARD CONSTRAINTS
+note below).
+
+`referenced_by` is the inverse of every relationship stored on every record:
+relationships are written on the source record only ("this decision
+contradicts that finding"), so "what points at this record" is otherwise
+answerable only by scanning the whole store. It is generic over relationship
+type and record type -- it walks whatever `relationships` dict a record
+happens to carry, unlike `ready`/`wave` which are specific to `depends_on`
+on contract-declared `depends_on`-bearing types.
 
 Terminal success state
 -----------------------
@@ -207,33 +216,66 @@ def _compute_waves(by_id: dict[str, dict[str, Any]]) -> dict[str, int | None]:
     return wave
 
 
+def compute_inverse(records: list[dict[str, Any]]) -> dict[str, dict[str, list[str]]]:
+    """{target_id: {relationship_type: [source_id, ...]}} over every relationship
+    edge in the record set, regardless of record type or contract.
+
+    Pure data walk: a record's `relationships` dict is always {type: [target_ids]}
+    by construction (validate_relationships enforces this on write), so this
+    needs no contract to interpret it. Source ids are sorted for determinism --
+    two records referencing the same target in different id order must not
+    make an otherwise-unchanged store's derived output differ.
+    """
+    inverse: dict[str, dict[str, list[str]]] = {}
+    for record in records:
+        source_id = record.get("id")
+        for rel_type, targets in (record.get("relationships") or {}).items():
+            for target_id in targets or []:
+                inverse.setdefault(target_id, {}).setdefault(rel_type, []).append(source_id)
+    for by_type in inverse.values():
+        for sources in by_type.values():
+            sources.sort()
+    return inverse
+
+
 def compute_derived(
     records: list[dict[str, Any]], contract: dict[str, Any]
 ) -> dict[str, dict[str, Any]]:
-    """{record_id: {"ready": bool, "wave": int | None}} for every record of a
-    type whose contract-declared relationships include depends_on.
+    """{record_id: {...}} of read-time-only values, never persisted.
+
+    `ready`/`wave` are attached only for records of a type whose
+    contract-declared relationships include `depends_on`. `referenced_by` is
+    attached for any record that is the target of at least one relationship
+    from another record, regardless of type -- a contract that declares
+    nothing depends_on-eligible and a store with no cross-references both
+    still yield `{}` here, so nothing changes for a store that uses neither
+    feature.
 
     Must be called with the full record set (not pre-filtered by type or
-    lifecycle_state) -- a dependency can name a record of any type, and
-    filtering first would misreport real targets as dangling. Does one graph
-    walk for the whole set, not one per record.
+    lifecycle_state) -- a dependency or relationship can name a record of any
+    type, and filtering first would misreport real targets as dangling or
+    unreferenced. Does one graph walk and one relationship walk for the whole
+    set, not one per record.
     """
     eligible = eligible_record_types(contract)
-    if not eligible:
+    inverse = compute_inverse(records)
+    if not eligible and not inverse:
         return {}
     defs = record_defs(contract)
     by_id = {record["id"]: record for record in records}
-    wave = _compute_waves(by_id)
+    wave = _compute_waves(by_id) if eligible else {}
     success_cache: dict[str, str | None] = {}
     derived: dict[str, dict[str, Any]] = {}
     for record in records:
-        if record.get("record_type") not in eligible:
-            continue
         record_id = record["id"]
-        derived[record_id] = {
-            "ready": _is_ready(record, by_id, defs, success_cache),
-            "wave": wave.get(record_id),
-        }
+        entry: dict[str, Any] = {}
+        if record.get("record_type") in eligible:
+            entry["ready"] = _is_ready(record, by_id, defs, success_cache)
+            entry["wave"] = wave.get(record_id)
+        if record_id in inverse:
+            entry["referenced_by"] = inverse[record_id]
+        if entry:
+            derived[record_id] = entry
     return derived
 
 

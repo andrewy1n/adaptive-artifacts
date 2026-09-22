@@ -16,7 +16,7 @@ EXPECTED_CONTRACT_FORMAT = "adaptive-artifacts/resolved-contract@0.3.0"
 # Kept in sync with derive.compute_derived's output shape. Defined here (the
 # schema-validation module) rather than in derive.py to avoid derive.py <->
 # contract.py becoming a cycle; derive.py doesn't need to import this.
-DERIVED_FIELDS = frozenset({"ready", "wave"})
+DERIVED_FIELDS = frozenset({"ready", "wave", "referenced_by"})
 
 # equals alone cannot express "open work" once status lives in the lifecycle:
 # there is no single state meaning not-finished.

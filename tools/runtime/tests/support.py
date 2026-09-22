@@ -42,6 +42,7 @@ def run_cli(
         capture_output=True,
         text=True,
         cwd=str(cwd or REPO_ROOT),
+        env=merged,
     )
 
 

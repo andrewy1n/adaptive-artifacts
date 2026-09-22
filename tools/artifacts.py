@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import sys
 from datetime import datetime, timezone
 from pathlib import Path
@@ -35,7 +36,14 @@ from contract import (
 from derive import attach_derived_all, compute_derived
 from git_backend import GitContextError, assert_git_context
 from handoff import generate_all_views, generate_handoff, generate_view
-from query import QueryError, compile_grep, parse_where, record_matches, summarize
+from query import (
+    QueryError,
+    compile_grep,
+    order_by_recorded_at,
+    parse_where,
+    record_matches,
+    summarize,
+)
 from store import (
     ContractBindingError,
     PartialStoreError,
@@ -66,6 +74,25 @@ EXIT_VALIDATION = 4
 
 def _now() -> str:
     return datetime.now(timezone.utc).replace(microsecond=0).isoformat()
+
+
+_UNKNOWN_IDENTITY = "unknown"
+
+
+def _resolve_identity(args: argparse.Namespace) -> str:
+    """--identity, else $ARTIFACTS_IDENTITY, else "unknown".
+
+    "unknown" beats guessing: silently attributing a write to whichever
+    session happened to run first is exactly the collision this exists to
+    stop being invisible.
+    """
+    flag = getattr(args, "identity", None)
+    if flag:
+        return flag
+    env = os.environ.get("ARTIFACTS_IDENTITY")
+    if env:
+        return env
+    return _UNKNOWN_IDENTITY
 
 
 def _emit_json(data: Any) -> None:
@@ -131,6 +158,7 @@ def _base_record(
     lifecycle_state: str | None = None,
     relationships: dict[str, list[str]] | None = None,
     body: str = "",
+    identity: str = _UNKNOWN_IDENTITY,
 ) -> dict[str, Any]:
     if isinstance(stewardship, str):
         stewardship = {"steward": stewardship}
@@ -144,6 +172,12 @@ def _base_record(
         "relationships": relationships or {},
         "revision": "",
         "body": body,
+        "recorded_at": _now(),
+        # who (which session) wrote this, distinct from stewardship.steward
+        # (what wrote it: agent/human). Top-level and unconditional -- unlike
+        # stewardship, not every record type requires that dimension (e.g.
+        # project:finding), and identity must not silently vanish for those.
+        "identity": identity,
     }
     if requires_dimension(record_def, "stewardship"):
         record["stewardship"] = stewardship
@@ -345,6 +379,7 @@ def cmd_create(args: argparse.Namespace) -> int:
                 record_id=record_id,
                 relationships=relationships or None,
                 body=body_text,
+                identity=_resolve_identity(args),
             )
             known_ids = {item["id"] for item in store.iter_records()} | {record_id}
             try:
@@ -394,6 +429,8 @@ def cmd_update(args: argparse.Namespace) -> int:
         return EXIT_ERROR
     record = dict(old)
     record["lifecycle_state"] = dest
+    record["recorded_at"] = _now()
+    record["identity"] = _resolve_identity(args)
     if requires_dimension(record_def, "epistemic_status") and dest in {
         "asserted",
         "supported",
@@ -475,6 +512,7 @@ def cmd_supersede(args: argparse.Namespace) -> int:
         record_id=new_id,
         relationships={"supersedes": [old["id"]]},
         body=body_text if body_given else old.get("body", ""),
+        identity=_resolve_identity(args),
     )
     records = list(store.iter_records())
     try:
@@ -485,6 +523,8 @@ def cmd_supersede(args: argparse.Namespace) -> int:
 
     old_updated = dict(old)
     old_updated["lifecycle_state"] = "superseded"
+    old_updated["recorded_at"] = _now()
+    old_updated["identity"] = _resolve_identity(args)
     archive_prior = old if requires_history(record_def) else None
     try:
         with store.write_lock():
@@ -546,8 +586,18 @@ def cmd_list(args: argparse.Namespace) -> int:
     matched = [
         record
         for record in records
-        if record_matches(record, where_filters=where_filters, subject=args.subject, grep=grep)
+        if record_matches(
+            record,
+            where_filters=where_filters,
+            subject=args.subject,
+            grep=grep,
+            since=args.since,
+            until=args.until,
+            has_inbound_types=args.has_inbound,
+        )
     ]
+    if args.order_by == "recorded_at":
+        matched = order_by_recorded_at(matched)
     out_records = matched if args.full else [summarize(record, grep=grep) for record in matched]
     _emit_json({"records": out_records, "count": len(matched)})
     return EXIT_OK
@@ -590,6 +640,7 @@ def cmd_correct(args: argparse.Namespace) -> int:
         record_id=new_id,
         relationships={"corrects": [old["id"]]},
         body=body_text if body_given else old.get("body", ""),
+        identity=_resolve_identity(args),
     )
     try:
         with store.write_lock():
@@ -648,8 +699,11 @@ def cmd_contradict(args: argparse.Namespace) -> int:
         # A contradicting record is a counter-claim, not a revision of the original,
         # so it must not inherit prose asserting what it disputes.
         body=body_text,
+        identity=_resolve_identity(args),
     )
     updated = dict(old)
+    updated["recorded_at"] = _now()
+    updated["identity"] = _resolve_identity(args)
     rels = dict(updated.get("relationships") or {})
     targets = list(rels.get("contradicted_by") or [])
     if new_id not in targets:
@@ -821,6 +875,7 @@ def cmd_capture(args: argparse.Namespace) -> int:
                             record_id=record_id,
                             relationships=relationships or None,
                             body=body_value,
+                            identity=part.get("identity") or _resolve_identity(args),
                         )
                         known_ids = {item["id"] for item in store.iter_records()} | {record_id}
                         try:
@@ -1013,6 +1068,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_create.add_argument("--type", required=True, help="Qualified record type")
     p_create.add_argument("--subject", help="Record subject")
     p_create.add_argument("--steward", help="Steward identifier")
+    p_create.add_argument(
+        "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
+    )
     p_create.add_argument("--payload", help="JSON payload object")
     p_create.add_argument(
         "--rel",
@@ -1029,6 +1087,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.add_argument("--id", required=True)
     p_update.add_argument("--transition", required=True, help="Target lifecycle state")
     p_update.add_argument("--expected-revision", required=True)
+    p_update.add_argument(
+        "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
+    )
     p_update.add_argument("--payload", help="JSON payload updates")
     p_update.add_argument(
         "--rel",
@@ -1046,6 +1107,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_sup.add_argument("--expected-revision", required=True)
     p_sup.add_argument("--payload", help="JSON payload for successor")
     p_sup.add_argument(
+        "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
+    )
+    p_sup.add_argument(
         "--body", help="Markdown body for successor (default: carries the predecessor's body forward)"
     )
     p_sup.add_argument("--body-file", help="Read Markdown body from file ('-' for stdin)")
@@ -1057,6 +1121,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_correct.add_argument("--payload", help="JSON payload overrides for successor")
     p_correct.add_argument("--subject", help="Successor subject (defaults to original)")
     p_correct.add_argument("--steward", help="Steward identifier")
+    p_correct.add_argument(
+        "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
+    )
     p_correct.add_argument(
         "--body", help="Markdown body for successor (default: carries the predecessor's body forward)"
     )
@@ -1074,6 +1141,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_contradict.add_argument("--transition", help="Optional lifecycle transition on the original")
     p_contradict.add_argument("--steward", help="Steward identifier")
     p_contradict.add_argument(
+        "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
+    )
+    p_contradict.add_argument(
         "--body",
         help="Markdown body for the contradicting record (default: carries the original's body forward)",
     )
@@ -1086,6 +1156,11 @@ def build_parser() -> argparse.ArgumentParser:
         "--records",
         required=True,
         help="JSON list of {type, subject, payload, body} objects (body is optional, default '')",
+    )
+    p_capture.add_argument(
+        "--identity",
+        help="Default writer identity for parts with no per-part 'identity' "
+        "(default: $ARTIFACTS_IDENTITY or 'unknown')",
     )
     p_capture.set_defaults(func=cmd_capture)
 
@@ -1121,6 +1196,25 @@ def build_parser() -> argparse.ArgumentParser:
         "--full",
         action="store_true",
         help="Emit full records (including body) instead of the default compact summary",
+    )
+    p_list.add_argument("--since", help="Only records with recorded_at >= this ISO-8601 timestamp")
+    p_list.add_argument("--until", help="Only records with recorded_at <= this ISO-8601 timestamp")
+    p_list.add_argument(
+        "--has-inbound",
+        action="append",
+        default=[],
+        dest="has_inbound",
+        metavar="<relationship_type>",
+        help=(
+            "Only records with at least one inbound relationship of this type "
+            "(derived.referenced_by; repeatable, AND semantics)"
+        ),
+    )
+    p_list.add_argument(
+        "--order-by",
+        choices=["recorded_at"],
+        dest="order_by",
+        help="Sort matched records (oldest recorded_at first; records missing it sort first)",
     )
     p_list.set_defaults(func=cmd_list)
 

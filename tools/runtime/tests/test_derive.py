@@ -418,7 +418,7 @@ class ContractDerivedSelectionTests(unittest.TestCase):
             _validate_role_selection(role, _BARE_OCCUPANT)
 
     def test_derived_fields_constant_matches_derive_output_shape(self):
-        self.assertEqual(DERIVED_FIELDS, {"ready", "wave"})
+        self.assertEqual(DERIVED_FIELDS, {"ready", "wave", "referenced_by"})
 
     def test_record_matches_selection_true_and_false_on_derived_field(self):
         selection = {"all": [{"field": "derived.ready", "equals": True}]}

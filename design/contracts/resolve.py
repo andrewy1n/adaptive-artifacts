@@ -17,7 +17,7 @@ RESOLVED_DIR = ROOT / "resolved"
 # Mirrors tools/runtime/contract.py. This module is the design-side resolver and
 # deliberately does not import the runtime, so the two must be changed together.
 SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of"})
-DERIVED_FIELDS = frozenset({"ready", "wave"})
+DERIVED_FIELDS = frozenset({"ready", "wave", "referenced_by"})
 
 # Semantic dimensions owned exclusively by traits.
 RECORD_TRAIT_OWNED = {
