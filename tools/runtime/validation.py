@@ -8,6 +8,7 @@ import subprocess
 from pathlib import Path
 from typing import Any
 
+from oplog import fold, read_ops
 from record_file import RECORD_GLOB, RECORD_SUFFIX, RecordFileError, load_record
 from contract import (
     advertises_corrects,
@@ -361,11 +362,73 @@ def _meta_digest_mismatch(store_root: Path, meta_path: Path) -> str | None:
     return None
 
 
+def _authorized_record_rewrite(store_root: Path, records_rel: str, offending: str) -> bool:
+    """True when a modified `records/` path is a rewrite the store's own op
+    log can account for, not an out-of-band edit.
+
+    `oplog.append_resolved_op` bakes the exact record dict into every
+    accepted create/write op, and `Store._materialize` always writes
+    `dump_record(fold(read_ops(chain_dir)))` -- the chain's folded state --
+    to the record path (see `store.py`). So if the record currently on disk
+    equals that fold, some accepted op in *this record's own chain*
+    produced it, whether or not that op or the record file has been
+    committed yet. Nothing here needs the record file, or the op that
+    produced it, to be committed -- only that they agree with each other.
+
+    Deliberately does not accept a bare "revision is self-consistent"
+    record: `revision` is a public, deterministic hash of the record's own
+    content (see `revision.py`), so a hand-edited record paired with a
+    hand-recomputed revision proves nothing.
+
+    What this catches is an edit made without going through the runtime --
+    the realistic case, an agent or a person fixing a record file by hand.
+    It is not proof of authorship: ops are unsigned JSON, so an edit that
+    also appends a matching op to the chain passes. Treat it as a
+    consistency check between a record and its own log, not as tamper
+    evidence; `git diff` remains the thing that shows a reader what changed.
+    """
+    prefix = f"{records_rel}/"
+    if not offending.startswith(prefix):
+        return False
+    parts = offending[len(prefix) :].split("/")
+    if len(parts) != 2:
+        return False
+    type_dir, filename = parts
+    if not filename.endswith(RECORD_SUFFIX):
+        return False
+    record_id = filename[: -len(RECORD_SUFFIX)]
+    path = store_root / "records" / type_dir / filename
+    try:
+        text = path.read_text()
+    except OSError:
+        return False
+    try:
+        record = load_record(text, path)
+    except RecordFileError:
+        return False
+    if not isinstance(record, dict):
+        return False
+    if record.get("id") != record_id:
+        return False
+    record_type = record.get("record_type")
+    if not isinstance(record_type, str):
+        return False
+    try:
+        expected_type_dir = type_dir_name(record_type)
+    except ValueError:
+        return False
+    if expected_type_dir != type_dir:
+        return False
+    chain_dir = store_root / "log" / type_dir / record_id
+    return fold(read_ops(chain_dir)) == record
+
+
 def validate_immutability(store_root: Path, errors: list[str]) -> None:
     """Fail on any store path that exists in git HEAD but was changed or removed
     in the working tree. Supersede is the only sanctioned mutation path, and it
     always writes a new record id -- so any in-place change to a path git already
-    committed is a violation by construction. New, uncommitted paths are fine.
+    committed is a violation by construction, unless the op log accounts for it
+    (see `_authorized_record_rewrite`). New, uncommitted paths are fine.
 
     History snapshots (`Store.archive_history`/`Store.iter_history`) are
     write-once: it refuses to overwrite an existing snapshot with different
@@ -391,6 +454,7 @@ def validate_immutability(store_root: Path, errors: list[str]) -> None:
     except ValueError:
         return
     meta_rel = (rel / "meta.json").as_posix()
+    records_rel = (rel / "records").as_posix()
     result = _run_git(
         [
             "git",
@@ -422,6 +486,10 @@ def validate_immutability(store_root: Path, errors: list[str]) -> None:
             if detail is None:
                 continue
             errors.append(f"immutability violation: {detail}")
+            continue
+        if not status.startswith("D") and _authorized_record_rewrite(
+            store_root, records_rel, offending
+        ):
             continue
         errors.append(
             f"immutability violation: committed store path modified or deleted "

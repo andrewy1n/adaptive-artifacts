@@ -18,6 +18,9 @@ sys.path.insert(0, str(REPO_ROOT / "design" / "contracts"))
 
 from support import git, make_git_repo  # noqa: E402
 from contract import contract_digest  # noqa: E402
+from record_file import dump_record, prepare_record  # noqa: E402
+from revision import with_revision  # noqa: E402
+from store import Store  # noqa: E402
 from validation import (  # noqa: E402
     ValidationError,
     validate_immutability,
@@ -185,6 +188,113 @@ class ImmutabilityGateTests(unittest.TestCase):
         validate_immutability(self.store, errors)
         self.assertEqual(len(errors), 1)
         self.assertIn("not valid JSON", errors[0])
+
+
+class AuthorizedRecordRewriteTests(unittest.TestCase):
+    """A runtime-authored rewrite of a committed record must pass; anything
+    else that produces the same `git status M`/`D` must still fail."""
+
+    def setUp(self):
+        self.repo = make_git_repo()
+        self.addCleanup(lambda: shutil.rmtree(self.repo, ignore_errors=True))
+        self.store_root = self.repo / "store"
+        self.store = Store(self.store_root)
+
+    def _record(self, **overrides) -> dict:
+        base = {
+            "id": self.store.new_id(),
+            "record_type": "project:thing",
+            "subject": "s",
+            "payload": {},
+            "lifecycle_state": "active",
+            "body": "",
+        }
+        base.update(overrides)
+        return with_revision(prepare_record(base))
+
+    def _commit_records(self) -> None:
+        # Deliberately commits only records/, not log/ -- the op chain is
+        # allowed to be untracked (or absent entirely, like the real
+        # 717-record fixture used elsewhere in this suite) without changing
+        # what counts as authorized.
+        git(self.repo, "add", str(self.store.records_dir))
+        result = git(self.repo, "commit", "-qm", "commit store")
+        self.assertEqual(result.returncode, 0, result.stderr)
+
+    def test_update_written_through_the_store_passes(self):
+        record = self._record()
+        self.store.create_record(record)
+        self._commit_records()
+        updated = dict(record)
+        updated["payload"] = {"note": "changed"}
+        self.store.write_record(updated, expected_revision=record["revision"])
+        errors: list[str] = []
+        validate_immutability(self.store_root, errors)
+        self.assertEqual(errors, [])
+
+    def test_hand_edited_content_with_stale_revision_still_fails(self):
+        record = self._record()
+        self.store.create_record(record)
+        self._commit_records()
+        path = self.store.record_path(record["record_type"], record["id"])
+        path.write_text(path.read_text().replace('"s"', '"tampered"'))
+        errors: list[str] = []
+        validate_immutability(self.store_root, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn(record["id"], errors[0])
+
+    def test_deleted_record_still_fails(self):
+        record = self._record()
+        self.store.create_record(record)
+        self._commit_records()
+        self.store.record_path(record["record_type"], record["id"]).unlink()
+        errors: list[str] = []
+        validate_immutability(self.store_root, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn(record["id"], errors[0])
+
+    def test_content_swapped_for_a_different_valid_record_fails(self):
+        record = self._record()
+        self.store.create_record(record)
+        self._commit_records()
+        # Self-consistent (correct revision for its own content) but never
+        # produced by this record's own op chain -- a forged stand-in, not
+        # a runtime rewrite.
+        forged = with_revision(
+            prepare_record(
+                {
+                    "id": record["id"],
+                    "record_type": record["record_type"],
+                    "subject": "hijacked",
+                    "payload": {"x": 1},
+                    "lifecycle_state": "active",
+                    "body": "",
+                }
+            )
+        )
+        path = self.store.record_path(record["record_type"], record["id"])
+        path.write_text(dump_record(forged))
+        errors: list[str] = []
+        validate_immutability(self.store_root, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn(record["id"], errors[0])
+
+    def test_legitimate_edit_without_a_surviving_op_chain_still_fails(self):
+        # A store whose log/ was never captured (the real 717-record fixture
+        # has none) or whose chain got purged gets no benefit of the doubt --
+        # same edit as the passing case above, but with the evidence gone.
+        record = self._record()
+        self.store.create_record(record)
+        self._commit_records()
+        updated = dict(record)
+        updated["payload"] = {"note": "changed"}
+        self.store.write_record(updated, expected_revision=record["revision"])
+        chain_dir = self.store._chain_dir(record["record_type"], record["id"])
+        shutil.rmtree(chain_dir)
+        errors: list[str] = []
+        validate_immutability(self.store_root, errors)
+        self.assertEqual(len(errors), 1)
+        self.assertIn(record["id"], errors[0])
 
 
 class RequiredSectionsTests(unittest.TestCase):
