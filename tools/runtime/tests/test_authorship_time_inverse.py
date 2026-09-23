@@ -138,7 +138,7 @@ class IdentityResolutionTests(_StoreTestCase):
         )
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         out = load_json(r.stdout)
-        self.assertEqual(out["new"]["identity"], "session-b")
+        self.assertEqual(out["record"]["identity"], "session-b")
         # The original record was also rewritten (relationships bookkeeping);
         # that write is attributed to whoever performed it now, not frozen at
         # session-a forever.
@@ -184,7 +184,7 @@ class IdentityResolutionTests(_StoreTestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
-        successor = load_json(r.stdout)["new"]
+        successor = load_json(r.stdout)["record"]
         self.assertEqual(successor["identity"], "session-b")
         self.assertNotEqual(successor["identity"], original["identity"])
 
@@ -219,7 +219,7 @@ class IdentityResolutionTests(_StoreTestCase):
         )
         self.assertEqual(r.returncode, 0, r.stderr + r.stdout)
         out = load_json(r.stdout)
-        self.assertEqual(out["new"]["identity"], "session-b")
+        self.assertEqual(out["record"]["identity"], "session-b")
         old_record = load_json(
             run_cli(
                 "get", "--type", "project:active-goal", "--id", original["id"], store=self.store

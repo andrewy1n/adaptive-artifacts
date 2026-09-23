@@ -180,6 +180,107 @@ class SessionHooksTests(unittest.TestCase):
         self.assertNotIn("last line", ctx)
         self.assertLess(len(ctx.encode("utf-8")), len(oversized.encode("utf-8")))
 
+    def test_start_injects_bounded_constraints_alongside_handoff(self):
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "# Handoff\n\nsome handoff body\n",
+                        "views": {"project:handoff": "# Handoff\n\nsome handoff body\n"},
+                        "constraints": {
+                            "items": [
+                                {"subject": "C1", "statement": "stay off SSH"},
+                                {"subject": "C2", "statement": "vault every secret"},
+                            ],
+                            "total": 2,
+                        },
+                    }
+                ),
+                stderr="",
+            )
+            import session_hooks
+
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertIn("C1", ctx)
+        self.assertIn("stay off SSH", ctx)
+        self.assertIn("C2", ctx)
+        self.assertIn("vault every secret", ctx)
+        self.assertNotIn("more not shown", ctx)
+
+    def test_start_notes_when_constraints_are_truncated(self):
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "",
+                        "views": {},
+                        "constraints": {
+                            "items": [{"subject": "C1", "statement": "shown"}],
+                            "total": 9,
+                        },
+                    }
+                ),
+                stderr="",
+            )
+            import session_hooks
+
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertIn("+8 more not shown", ctx)
+
+    def test_start_truncates_an_oversized_constraint_statement(self):
+        import session_hooks
+
+        long_statement = "x" * (session_hooks.MAX_CONSTRAINT_STATEMENT_CHARS + 50)
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "",
+                        "views": {},
+                        "constraints": {
+                            "items": [{"subject": "C1", "statement": long_statement}],
+                            "total": 1,
+                        },
+                    }
+                ),
+                stderr="",
+            )
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertNotIn(long_statement, ctx)
+        constraint_line = next(line for line in ctx.splitlines() if "C1" in line)
+        self.assertLess(
+            len(constraint_line), session_hooks.MAX_CONSTRAINT_STATEMENT_CHARS + 50
+        )
+
+    def test_start_omits_constraints_block_when_there_are_none(self):
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "# Handoff\n\nsome handoff body\n",
+                        "views": {"project:handoff": "# Handoff\n\nsome handoff body\n"},
+                        "constraints": {"items": [], "total": 0},
+                    }
+                ),
+                stderr="",
+            )
+            import session_hooks
+
+            body = session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        ctx = body["additional_context"]
+        self.assertNotIn("Active constraints", ctx)
+
     def test_start_claude_format_also_bounds_context(self):
         r = run_cli("init", store=self.store, contract=RESOLVED, root=self.repo, cwd=self.repo)
         self.assertEqual(r.returncode, 0, r.stdout)

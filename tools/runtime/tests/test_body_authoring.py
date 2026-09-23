@@ -269,7 +269,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        successor = load_json(r.stdout)["new"]
+        successor = load_json(r.stdout)["record"]
         self.assertEqual(successor["body"], "why v0\n")
 
     def test_supersede_with_body_replaces_it(self):
@@ -295,7 +295,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "why v1\n")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "why v1\n")
 
     def test_supersede_with_empty_body_clears_it(self):
         rec = self._create(
@@ -320,7 +320,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "")
 
     # -- correct --------------------------------------------------------
 
@@ -343,7 +343,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "raw log excerpt\n")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "raw log excerpt\n")
 
     def test_correct_with_body_replaces_it(self):
         rec = self._create(
@@ -366,7 +366,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "corrected log excerpt\n")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "corrected log excerpt\n")
 
     def test_correct_with_empty_body_clears_it(self):
         rec = self._create(
@@ -389,7 +389,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "")
 
     # -- contradict -------------------------------------------------------
 
@@ -416,7 +416,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "")
 
     def test_contradict_with_body_replaces_it(self):
         finding = self._create(
@@ -443,7 +443,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "counter-argument\n")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "counter-argument\n")
 
     def test_contradict_with_empty_body_clears_it(self):
         finding = self._create(
@@ -470,7 +470,7 @@ class BodyAuthoringTests(unittest.TestCase):
             store=self.store,
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
-        self.assertEqual(load_json(r.stdout)["new"]["body"], "")
+        self.assertEqual(load_json(r.stdout)["record"]["body"], "")
 
     # -- capture ----------------------------------------------------------
 

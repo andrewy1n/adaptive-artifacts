@@ -141,6 +141,12 @@ def validate_contract_structure(contract: dict[str, Any]) -> None:
             raise ContractError(f"{record_id}: base_kind must be a string")
         if not isinstance(record.get("payload"), list):
             raise ContractError(f"{record_id}: payload must be a list")
+        optional_payload = record.get("optional_payload")
+        if optional_payload is not None and not isinstance(optional_payload, list):
+            raise ContractError(f"{record_id}: optional_payload must be a list")
+        payload_enum = record.get("payload_enum")
+        if payload_enum is not None and not isinstance(payload_enum, dict):
+            raise ContractError(f"{record_id}: payload_enum must be an object")
         lifecycle = record.get("lifecycle")
         if not isinstance(lifecycle, dict) or not isinstance(
             lifecycle.get("states"), list

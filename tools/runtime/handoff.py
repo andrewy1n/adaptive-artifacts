@@ -9,6 +9,7 @@ from contract import canonical_digest, record_matches_selection, view_by_id
 from paths import type_dir_name
 from record_file import RECORD_SUFFIX
 from revision import compute_revision
+from validation import FAILING_RESULT_VALUES, subject_related
 
 # Callers that know the real store location (e.g. artifacts.py's cmd_view /
 # cmd_handoff / cmd_hook_start) should pass it via store_root. This default
@@ -64,11 +65,66 @@ def _field_value(record: dict[str, Any], field: str) -> Any:
     return (record.get("payload") or {}).get(field)
 
 
+def _status_bits(
+    record: dict[str, Any],
+    parameters: dict[str, Any],
+    tally_records: list[dict[str, Any]],
+) -> list[str]:
+    """Extra summary bits a view can ask for beyond requires_payload.
+
+    These read state requires_payload can't reach today (lifecycle_state,
+    derive.py's read-time fields) or aren't per-record at all (a pass/fail
+    tally over a correlated record type). The check-run<->work-item link
+    reuses validation.subject_related -- the same subject-prefix heuristic
+    strict mode's done-with-a-failing-check warning already relies on --
+    rather than growing a second, differently-tuned version of the same link.
+    """
+    bits = []
+    if parameters.get("show_lifecycle_state"):
+        bits.append(f"state: {record.get('lifecycle_state')}")
+    for field in parameters.get("show_derived") or []:
+        value = (record.get("derived") or {}).get(field)
+        if value is not None:
+            bits.append(f"{field}: {value}")
+    if parameters.get("tally_source_type"):
+        result_field = parameters.get("tally_result_field") or "result"
+        subject = record.get("subject", "")
+        passed = failed = 0
+        for candidate in tally_records:
+            if not subject_related(subject, candidate.get("subject", "")):
+                continue
+            value = (candidate.get("payload") or {}).get(result_field)
+            if not isinstance(value, str) or not value:
+                continue
+            if value.lower() in FAILING_RESULT_VALUES:
+                failed += 1
+            else:
+                passed += 1
+        bits.append(f"criteria: {passed} pass / {failed} fail")
+    return bits
+
+
+def _tally_source_records(
+    parameters: dict[str, Any], records: list[dict[str, Any]]
+) -> list[dict[str, Any]]:
+    """Records feeding a view's tally, selected by type alone.
+
+    Shared by generate_view and live_view_state_digest so a check-run edit
+    marks the view stale exactly when it would change the rendered tally --
+    the same reason _group_and_collect/_digest_inputs are already shared.
+    """
+    tally_type = parameters.get("tally_source_type")
+    if not tally_type:
+        return []
+    return [record for record in records if record["record_type"] == tally_type]
+
+
 def _record_line(
     record: dict[str, Any],
     role: dict[str, Any],
     *,
     store_root: str = _DEFAULT_STORE_ROOT,
+    extra_bits: list[str] | None = None,
 ) -> str:
     payload = record.get("payload") or {}
     requested = role.get("requires_payload") or []
@@ -81,6 +137,7 @@ def _record_line(
         if value is None or value == "":
             continue
         bits.append(str(value))
+    bits.extend(extra_bits or [])
     summary = "; ".join(bits)
     # owner renders in its own slot rather than the summary, but still only when
     # the role asked for it -- the allowlist has no exceptions.
@@ -172,6 +229,67 @@ def _group_sort_key(
     return key
 
 
+def _group_and_collect(
+    view: dict[str, Any],
+    group_by: str,
+    records: list[dict[str, Any]],
+) -> tuple[dict[str, dict[str, list[dict[str, Any]]]], dict[str, dict[str, Any]]]:
+    role_names = [role["name"] for role in view["roles"]]
+    groups: dict[str, dict[str, list[dict[str, Any]]]] = {}
+    contributing: dict[str, dict[str, Any]] = {}
+    for role in view["roles"]:
+        for record in _select_records(records, role):
+            key = _group_key(record, group_by)
+            groups.setdefault(key, {name: [] for name in role_names})
+            groups[key][role["name"]].append(record)
+            contributing[record["id"]] = record
+    return groups, contributing
+
+
+def live_view_state_digest(
+    contract: dict[str, Any], view_id: str, records: list[dict[str, Any]]
+) -> str:
+    """The digest a fresh render of `view_id` would embed right now.
+
+    Shares `_group_and_collect`/`_digest_inputs` with `generate_view` so the
+    two can never disagree about which records feed the digest.
+    """
+    view = view_by_id(contract, view_id)
+    parameters = view.get("parameters") or {}
+    group_by = parameters.get("group_by") or "subject"
+    order_field = parameters.get("order_by")
+    groups, contributing = _group_and_collect(view, group_by, records)
+    for record in _tally_source_records(parameters, records):
+        contributing.setdefault(record["id"], record)
+    return _store_state_digest(_digest_inputs(contributing, groups, order_field, records))
+
+
+_EMBEDDED_STATE_PREFIX = "> Store state: "
+
+
+def embedded_view_state_digest(rendered: str) -> str | None:
+    """The `Store state: sha256:...` digest already written into a rendered
+    view, or None if the line is missing (e.g. hand-edited or truncated)."""
+    for line in rendered.splitlines():
+        if line.startswith(_EMBEDDED_STATE_PREFIX):
+            return line[len(_EMBEDDED_STATE_PREFIX) :].strip()
+    return None
+
+
+def view_is_stale(
+    contract: dict[str, Any],
+    view_id: str,
+    records: list[dict[str, Any]],
+    rendered: str,
+) -> bool:
+    """True when `rendered` no longer reflects the store's live state --
+    either it embeds no digest at all, or that digest no longer matches."""
+    embedded = embedded_view_state_digest(rendered)
+    if embedded is None:
+        return True
+    return embedded != live_view_state_digest(contract, view_id, records)
+
+
 def generate_view(
     contract: dict[str, Any],
     view_id: str,
@@ -183,15 +301,10 @@ def generate_view(
     parameters = view.get("parameters") or {}
     group_by = parameters.get("group_by") or "subject"
     order_field = parameters.get("order_by")
-    role_names = [role["name"] for role in view["roles"]]
-    groups: dict[str, dict[str, list[dict[str, Any]]]] = {}
-    contributing: dict[str, dict[str, Any]] = {}
-    for role in view["roles"]:
-        for record in _select_records(records, role):
-            key = _group_key(record, group_by)
-            groups.setdefault(key, {name: [] for name in role_names})
-            groups[key][role["name"]].append(record)
-            contributing[record["id"]] = record
+    groups, contributing = _group_and_collect(view, group_by, records)
+    tally_records = _tally_source_records(parameters, records)
+    for record in tally_records:
+        contributing.setdefault(record["id"], record)
 
     lines = [
         f"# {_title(view_id)}",
@@ -219,7 +332,10 @@ def generate_view(
                 continue
             lines.append(f"### {_title(role['name'])}")
             for record in items:
-                lines.append(_record_line(record, role, store_root=store_root))
+                extra_bits = _status_bits(record, parameters, tally_records)
+                lines.append(
+                    _record_line(record, role, store_root=store_root, extra_bits=extra_bits)
+                )
             lines.append("")
     return "\n".join(lines)
 
@@ -247,3 +363,10 @@ def generate_all_views(
         view["id"]: generate_view(contract, view["id"], records, store_root=store_root)
         for view in contract.get("views") or []
     }
+
+
+def view_file_name(view_id: str) -> str:
+    """Filename a view is written under on disk -- shared by the write side
+    (session_hooks._write_views) and the read side (hook-stop's staleness
+    check) so the two can't drift apart."""
+    return view_id.split(":")[-1] + ".md"

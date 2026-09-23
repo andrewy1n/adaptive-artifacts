@@ -41,6 +41,8 @@ RECORD_TRAIT_COMPOSE_ALLOWED = {
     "base_kind",
     "required_sections",
     "payload_references",
+    "optional_payload",
+    "payload_enum",
 }
 
 RECORD_PATTERN_ALLOWED = {
@@ -57,6 +59,8 @@ RECORD_PATTERN_ALLOWED = {
     "namespace",
     "required_sections",
     "payload_references",
+    "optional_payload",
+    "payload_enum",
 }
 
 VIEW_ROLE_ALLOWED = {
@@ -112,6 +116,10 @@ PATTERN_TRAITS = {
     "phase": {
         "traits": ["entity", "stewarded", "staged-progress"],
         "base_kind": "phase",
+    },
+    "instruction": {
+        "traits": ["entity", "occurrence"],
+        "base_kind": "instruction",
     },
 }
 
@@ -353,6 +361,21 @@ def compose_record(
     caps = unique(caps)
     check_storage_compat(caps, label)
 
+    optional_payload = unique(list(record.get("optional_payload") or []))
+    unknown_optional = [field for field in optional_payload if field not in payload]
+    if unknown_optional:
+        raise ResolveError(f"{label}: optional_payload not in payload {unknown_optional}")
+
+    payload_enum = {
+        field: list(values) for field, values in (record.get("payload_enum") or {}).items()
+    }
+    unknown_enum = [field for field in payload_enum if field not in payload]
+    if unknown_enum:
+        raise ResolveError(f"{label}: payload_enum not in payload {unknown_enum}")
+    empty_enum = [field for field, values in payload_enum.items() if not values]
+    if empty_enum:
+        raise ResolveError(f"{label}: payload_enum has no values {empty_enum}")
+
     lifecycle = merge_lifecycles(lifecycles, label)
     if lifecycle is None:
         raise ResolveError(f"{label}: no lifecycle")
@@ -385,6 +408,8 @@ def compose_record(
         "storage_capabilities": caps,
         "required_sections": list(record.get("required_sections") or []) or None,
         "payload_references": dict(record.get("payload_references") or {}) or None,
+        "optional_payload": optional_payload or None,
+        "payload_enum": payload_enum or None,
     }
     return {key: value for key, value in composed_record.items() if value is not None}
 
@@ -447,6 +472,12 @@ def compose_pattern_record(record: dict, traits: dict) -> dict:
         trait_shaped["required_sections"] = list(record["required_sections"])
     if record.get("payload_references"):
         trait_shaped["payload_references"] = dict(record["payload_references"])
+    if record.get("optional_payload"):
+        trait_shaped["optional_payload"] = list(record["optional_payload"])
+    if record.get("payload_enum"):
+        trait_shaped["payload_enum"] = {
+            field: list(values) for field, values in record["payload_enum"].items()
+        }
     composed = compose_record(trait_shaped, namespace, traits, experimental=False)
     composed["pattern"] = pattern
     for key in ("purpose", "canonical_for", "replica_of", "derived_from"):

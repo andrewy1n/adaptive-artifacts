@@ -1,8 +1,16 @@
 """JSON filesystem store for contract-bound semantic records.
 
-Single-writer assumption: each record and history file is atomically written,
-but multi-record operations are not transactional. Validation detects orphan
-superseded records, partial lineage, and path/layout tampering.
+Mutations never read-modify-write a record file directly: `create_record`
+and `write_record` append an immutable op to that record's chain (see
+`oplog.py`), then fold the chain to decide accept/reject and to materialize
+`records/<type>/<id>.md` -- the same on-disk shape `query.py`, `derive.py`,
+`handoff.py`, and `validation.py` already read, so nothing downstream of the
+materialized store changed. `expected_revision` conflicts are therefore
+detected by folding, not by locking the record file, and concurrent writers
+to different (or even the same) record chain never block each other.
+Multi-record operations (e.g. supersede, capture) are still not
+transactional across records. Validation detects orphan superseded records,
+partial lineage, and path/layout tampering.
 """
 
 from __future__ import annotations
@@ -25,6 +33,7 @@ from paths import (
     validate_record_id,
     validate_record_type,
 )
+from oplog import CHECKPOINT_KIND, OP_SUFFIX, append_resolved_op, fold, prune_before, purge_chain, read_ops
 from record_file import (
     RECORD_GLOB,
     RECORD_SUFFIX,
@@ -34,6 +43,8 @@ from record_file import (
     prepare_record,
 )
 from revision import compute_revision, with_revision
+
+CHECKPOINT_THRESHOLD = 32
 
 LOCK_FILENAME = ".write.lock"
 LOCK_RETRY_ATTEMPTS = 20
@@ -83,6 +94,25 @@ def _load_record_file(path: Path) -> dict[str, Any]:
         raise StoreError(str(exc)) from exc
 
 
+def _decide_create(current: dict[str, Any] | None, record: dict[str, Any]) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    if current is not None:
+        return "rejected_exists", current, {"conflict_revision": current.get("revision")}
+    new_state = with_revision(prepare_record(record))
+    return "accepted", new_state, {}
+
+
+def _decide_write(
+    current: dict[str, Any] | None, record: dict[str, Any], expected_revision: str | None
+) -> tuple[str, dict[str, Any], dict[str, Any]]:
+    if current is not None:
+        if expected_revision is None:
+            return "rejected_missing_expected", current, {"conflict_revision": current.get("revision")}
+        if expected_revision != current.get("revision"):
+            return "rejected_stale", current, {"conflict_revision": current.get("revision")}
+    new_state = with_revision(prepare_record(record))
+    return "accepted", new_state, {}
+
+
 class Store:
     STORE_VERSION = 1
 
@@ -90,6 +120,7 @@ class Store:
         self.root = root
         self.records_dir = root / "records"
         self.history_dir = root / "history"
+        self.log_dir = root / "log"
 
     def meta_path(self) -> Path:
         return self.root / "meta.json"
@@ -153,6 +184,8 @@ class Store:
         for base in (self.records_dir, self.history_dir):
             if base.is_dir() and any(base.rglob(RECORD_GLOB)):
                 return True
+        if self.log_dir.is_dir() and any(self.log_dir.rglob(f"*{OP_SUFFIX}")):
+            return True
         return False
 
     def load_meta(self) -> dict[str, Any]:
@@ -197,6 +230,14 @@ class Store:
             raise StoreError(str(exc)) from exc
         return self.type_dir(record_type) / f"{record_id}{RECORD_SUFFIX}"
 
+    def _chain_dir(self, record_type: str, record_id: str) -> Path:
+        try:
+            validate_record_type(record_type)
+            validate_record_id(record_id)
+        except PathValidationError as exc:
+            raise StoreError(str(exc)) from exc
+        return self.log_dir / type_dir_name(record_type) / record_id
+
     def history_snapshot_path(self, record_type: str, record_id: str, revision: str) -> Path:
         try:
             validate_record_type(record_type)
@@ -239,9 +280,15 @@ class Store:
         path.parent.mkdir(parents=True, exist_ok=True)
         if not overwrite and path.exists():
             raise StoreError(f"refusing to overwrite existing file: {path}")
-        tmp = path.with_suffix(path.suffix + ".tmp")
-        tmp.write_text(content)
-        tmp.replace(path)
+        # Unique per call, not just per target: concurrent writers materializing
+        # the same record now race on this path, and a shared tmp name would let
+        # one process's replace() steal the file out from under another's.
+        tmp = path.with_suffix(f"{path.suffix}.tmp-{uuid.uuid4().hex}")
+        try:
+            tmp.write_text(content)
+            tmp.replace(path)
+        finally:
+            tmp.unlink(missing_ok=True)
 
     def _history_content(self, record: dict[str, Any]) -> str:
         return dump_record(record)
@@ -265,6 +312,34 @@ class Store:
             snapshot = _load_record_file(path)
             yield path, snapshot
 
+    def _materialize(self, record_type: str, record_id: str, state: dict[str, Any]) -> None:
+        self._atomic_write(self.record_path(record_type, record_id), dump_record(state))
+
+    def _maybe_checkpoint(self, chain_dir: Path) -> None:
+        """Bound chain growth once it passes a threshold.
+
+        The checkpoint op is appended the same way any other op is (see
+        `oplog.append_resolved_op`) -- always "accepted", since it is a
+        snapshot rather than a conflicting mutation -- so it is crash-safe
+        the same way. Its record is whatever `append_resolved_op` folds
+        fresh at the moment it claims its slot, never a state captured
+        earlier by the caller: a checkpoint is itself an accepted op, so it
+        wins the fold like any other, and baking in a snapshot from before
+        its own commit could paper back over an op that landed in between,
+        permanently losing it once `prune_before` deletes the pre-checkpoint
+        files. Pruning the ops it subsumes is a best-effort cleanup
+        afterward: folding a checkpoint plus leftover pre-checkpoint files
+        still yields the identical final state, so a crash or race mid-prune
+        only costs a temporarily larger chain, never a wrong answer. Safe to
+        run concurrently with another writer that just appended one of the
+        ops being pruned: that writer already has its own outcome baked into
+        the op it wrote and never needs to re-read that specific file.
+        """
+        if len(read_ops(chain_dir)) < CHECKPOINT_THRESHOLD:
+            return
+        checkpoint = append_resolved_op(chain_dir, CHECKPOINT_KIND, lambda current: ("accepted", current, {}))
+        prune_before(chain_dir, checkpoint["seq"])
+
     def write_record(
         self,
         record: dict[str, Any],
@@ -274,28 +349,50 @@ class Store:
     ) -> dict[str, Any]:
         record_type = record["record_type"]
         record_id = record["id"]
-        path = self.record_path(record_type, record_id)
-        if path.exists():
-            if expected_revision is None:
-                raise StoreError(f"record {record_id} exists; expected revision required")
-            current = self.read_record(record_type, record_id)["revision"]
-            if current != expected_revision:
-                raise StaleWriteError(
-                    f"stale write for {record_id}: expected {expected_revision}, got {current}"
-                )
-            if archive_prior is not None:
-                self.archive_history(archive_prior)
-        stored = with_revision(prepare_record(record))
-        self._atomic_write(path, dump_record(stored))
-        return stored
+        self.record_path(record_type, record_id)  # validate path components early
+        chain_dir = self._chain_dir(record_type, record_id)
+        state_before: list[dict[str, Any] | None] = []
+
+        def decide(current: dict[str, Any] | None) -> tuple[str, dict[str, Any], dict[str, Any]]:
+            state_before.append(current)
+            return _decide_write(current, record, expected_revision)
+
+        written = append_resolved_op(chain_dir, "write", decide)
+        # Re-fold rather than trust written["record"]: another writer's op may
+        # have landed after this one, and that newer state is what belongs on
+        # disk -- re-folding never needs this op's own file to still exist.
+        # Do this -- and the checkpoint check -- unconditionally, including on
+        # a rejected outcome: a chain under heavy contention accumulates far
+        # more rejected attempts than accepted ones, and skipping the bound
+        # on the reject path is what would let it grow without bound.
+        final_state = fold(read_ops(chain_dir))
+        assert final_state is not None
+        self._materialize(record_type, record_id, final_state)
+        self._maybe_checkpoint(chain_dir)
+        if written["outcome"] == "rejected_missing_expected":
+            raise StoreError(f"record {record_id} exists; expected revision required")
+        if written["outcome"] == "rejected_stale":
+            raise StaleWriteError(
+                f"stale write for {record_id}: expected {expected_revision}, "
+                f"got {written.get('conflict_revision')}"
+            )
+        if state_before[-1] is not None and archive_prior is not None:
+            self.archive_history(archive_prior)
+        return with_revision(prepare_record(record))
 
     def create_record(self, record: dict[str, Any]) -> dict[str, Any]:
-        path = self.record_path(record["record_type"], record["id"])
-        if path.exists():
-            raise StoreError(f"record already exists: {record['id']}")
-        stored = with_revision(prepare_record(record))
-        self._atomic_write(path, dump_record(stored))
-        return stored
+        record_type = record["record_type"]
+        record_id = record["id"]
+        self.record_path(record_type, record_id)  # validate path components early
+        chain_dir = self._chain_dir(record_type, record_id)
+        written = append_resolved_op(chain_dir, "create", lambda current: _decide_create(current, record))
+        final_state = fold(read_ops(chain_dir))
+        assert final_state is not None
+        self._materialize(record_type, record_id, final_state)
+        self._maybe_checkpoint(chain_dir)
+        if written["outcome"] == "rejected_exists":
+            raise StoreError(f"record already exists: {record_id}")
+        return with_revision(prepare_record(record))
 
     def record_exists(self, record_type: str, record_id: str) -> bool:
         return self.record_path(record_type, record_id).is_file()
@@ -303,9 +400,13 @@ class Store:
     def delete_record_file(self, record_type: str, record_id: str) -> None:
         """Remove a record file, e.g. to unwind a partially-written multi-record bundle.
 
-        Silent no-op if already absent, so rollback is safe to call twice.
+        Silent no-op if already absent, so rollback is safe to call twice. Also
+        purges the record's op chain: ids are never reused, so nothing will
+        ever append to this chain again, and leaving it behind would only grow
+        the log for no reason.
         """
         self.record_path(record_type, record_id).unlink(missing_ok=True)
+        purge_chain(self._chain_dir(record_type, record_id))
 
     def delete_history_snapshot(self, record_type: str, record_id: str, revision: str) -> None:
         """Companion to delete_record_file for append-only types' history snapshot."""

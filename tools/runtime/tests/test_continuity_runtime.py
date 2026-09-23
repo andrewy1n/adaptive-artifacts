@@ -113,7 +113,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         body = load_json(r.stdout)
-        self.assertNotEqual(body["new"]["id"], first["id"])
+        self.assertNotEqual(body["record"]["id"], first["id"])
         old = load_json(
             run_cli(
                 "get",
@@ -125,7 +125,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
             ).stdout
         )
         self.assertEqual(old["lifecycle_state"], "superseded")
-        self.assertEqual(body["new"]["relationships"]["supersedes"], [first["id"]])
+        self.assertEqual(body["record"]["relationships"]["supersedes"], [first["id"]])
 
     def test_commitment_lifecycle_paths(self):
         self._init()
@@ -374,7 +374,7 @@ class ContinuityRuntimeTests(unittest.TestCase):
                 sample_position_payload(position="v1"),
                 store=self.store,
             ).stdout
-        )["new"]
+        )["record"]
         r = run_cli(
             "supersede",
             "--type",

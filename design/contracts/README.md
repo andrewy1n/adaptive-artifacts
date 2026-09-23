@@ -23,8 +23,8 @@ requires an explicit version change; a digest mismatch is always an error.
 
 A project design declares `records` from closed patterns
 (`current-status`, `event`, `observation`, `finding`, `question`,
-`commitment`, `decision`, `definition`, `replica`, `task`, `phase`),
-plus `views` and `bundles`. It locks semantic sources and may supply view parameters and
+`commitment`, `decision`, `definition`, `replica`, `task`, `phase`,
+`instruction`), plus `views` and `bundles`. It locks semantic sources and may supply view parameters and
 occupancy. `overrides` remain empty. `gaps` name recurring needs and do
 not block pattern types. A `families` key is rejected.
 

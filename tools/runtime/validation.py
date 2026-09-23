@@ -37,14 +37,24 @@ def validate_payload(record_def: dict[str, Any], record: dict[str, Any]) -> None
     payload = record.get("payload")
     if not isinstance(payload, dict):
         raise ValidationError(f"{record['id']}: payload must be an object")
+    optional = set(record_def.get("optional_payload") or [])
     for field in record_def.get("payload", []):
-        if field == "subject":
+        if field == "subject" or field in optional:
             continue
         if field not in payload:
             raise ValidationError(f"{record['id']}: missing payload field {field!r}")
     if "blocking" in record_def.get("payload", []):
         if not isinstance(payload.get("blocking"), bool):
             raise ValidationError(f"{record['id']}: blocking must be bool")
+    for field, allowed in (record_def.get("payload_enum") or {}).items():
+        value = payload.get(field, "")
+        if value == "":
+            continue
+        if value not in allowed:
+            raise ValidationError(
+                f"{record['id']}: payload field {field!r} value {value!r} "
+                f"is not one of {allowed}"
+            )
 
 
 _SECTION_HEADING_RE = re.compile(r"^##\s+(.+?)\s*$")
@@ -604,6 +614,155 @@ def validate_append_only(
                 f"{record['id']}: append_with_audit original must stay "
                 f"{record_def['lifecycle']['initial']!r}"
             )
+
+
+_STRICT_TERMINAL_SUCCESS_STATES = {"done", "completed"}
+FAILING_RESULT_VALUES = {"fail", "failed", "error"}
+
+
+def _strict_dependency_edges(
+    records: list[dict[str, Any]], defs: dict[str, dict], warnings: list[str]
+) -> None:
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_type.setdefault(record.get("record_type", ""), []).append(record)
+    for record_type, items in by_type.items():
+        if "depends_on" not in defs.get(record_type, {}).get("relationships", []):
+            continue
+        if any((item.get("relationships") or {}).get("depends_on") for item in items):
+            continue
+        warnings.append(
+            f"{record_type}: none of {len(items)} records carries a depends_on edge"
+        )
+
+
+def _store_wide_identity_fields(
+    records: list[dict[str, Any]], defs: dict[str, dict]
+) -> set[str]:
+    """Payload field names that hold exactly one value across the whole
+    store and are declared on more than one record type.
+
+    A field meant to discriminate between records varies within its own
+    type. A field like `effort` or `scope` names something about the store
+    itself (which effort it tracks, which workstream it scopes to) rather
+    than about any one record -- every type that declares it will carry the
+    identical value by construction, and flagging that as "the same value
+    across all records" is a false positive no matter how many records set
+    it. The signal that separates the two is store-wide, not per-type: a
+    field declared on only one type gives no way to tell "shared identity"
+    from "this type's field happens to be constant," which is exactly the
+    defect this check exists to catch, so single-declarer fields are never
+    exempted here.
+    """
+    declaring_types: dict[str, set[str]] = {}
+    for record_type, record_def in defs.items():
+        for field in record_def.get("payload", []):
+            if field == "subject":
+                continue
+            declaring_types.setdefault(field, set()).add(record_type)
+    values: dict[str, set[Any]] = {}
+    for record in records:
+        for field, value in (record.get("payload") or {}).items():
+            if value == "":
+                continue
+            values.setdefault(field, set()).add(value)
+    return {
+        field
+        for field, types in declaring_types.items()
+        if len(types) >= 2 and len(values.get(field, set())) == 1
+    }
+
+
+# Below this many records, one repeated value is ordinary rather than
+# evidence: two decisions naming the same phase is what a phase looks like.
+# The defect this check exists to catch spanned 74 records.
+_CONSTANT_FIELD_FLOOR = 10
+
+
+def _strict_constant_payload_fields(
+    records: list[dict[str, Any]], defs: dict[str, dict], warnings: list[str]
+) -> None:
+    exempt = _store_wide_identity_fields(records, defs)
+    by_type: dict[str, list[dict[str, Any]]] = {}
+    for record in records:
+        by_type.setdefault(record.get("record_type", ""), []).append(record)
+    for record_type, items in by_type.items():
+        for field in defs.get(record_type, {}).get("payload", []):
+            if field == "subject" or field in exempt:
+                continue
+            # Empty string is this schema's "unset", not a value -- see
+            # validate_payload_references for the same convention.
+            values = [
+                item["payload"][field]
+                for item in items
+                if item["payload"].get(field, "") != ""
+            ]
+            if len(values) >= _CONSTANT_FIELD_FLOOR and len(set(values)) == 1:
+                warnings.append(
+                    f"{record_type}: payload field {field!r} is the same value "
+                    f"{values[0]!r} across all {len(values)} records that set it"
+                )
+
+
+def subject_related(parent_subject: str, other_subject: str) -> bool:
+    """True when `other_subject` looks derived from `parent_subject`.
+
+    Not a declared relationship -- a subject-prefix convention some importers
+    use to link a check/acceptance record back to the item it's about (e.g.
+    "<work-item>-ac3"). Heuristic, so false negatives are expected wherever a
+    project doesn't follow the convention. Public because `handoff.py` reuses
+    this exact heuristic to correlate check-runs back to work-items for the
+    status view's criteria tally -- a second, differently-tuned heuristic for
+    the same link would eventually disagree with this one.
+    """
+    if not parent_subject or not other_subject:
+        return False
+    if other_subject == parent_subject:
+        return True
+    if not other_subject.startswith(parent_subject):
+        return False
+    return not other_subject[len(parent_subject)].isalnum()
+
+
+def _strict_done_with_failing_check(
+    records: list[dict[str, Any]], defs: dict[str, dict], warnings: list[str]
+) -> None:
+    terminal = [
+        record
+        for record in records
+        if record.get("lifecycle_state") in _STRICT_TERMINAL_SUCCESS_STATES
+    ]
+    if not terminal:
+        return
+    failing = []
+    for record in records:
+        record_def = defs.get(record.get("record_type", ""), {})
+        if "result" not in record_def.get("payload", []):
+            continue
+        value = (record.get("payload") or {}).get("result")
+        if isinstance(value, str) and value.lower() in FAILING_RESULT_VALUES:
+            failing.append(record)
+    for record in terminal:
+        subject = record.get("subject", "")
+        for check in failing:
+            if subject_related(subject, check.get("subject", "")):
+                warnings.append(
+                    f"{record['id']}: lifecycle_state {record['lifecycle_state']!r} "
+                    f"but {check['id']} reports result={check['payload']['result']!r}"
+                )
+
+
+def validate_strict(
+    records: list[dict[str, Any]], defs: dict[str, dict]
+) -> list[str]:
+    """Warnings for legal-but-almost-certainly-wrong shapes `validate_store`
+    lets through -- opt-in via `validate --strict`, never affects exit status
+    of a plain `validate`."""
+    warnings: list[str] = []
+    _strict_dependency_edges(records, defs, warnings)
+    _strict_constant_payload_fields(records, defs, warnings)
+    _strict_done_with_failing_check(records, defs, warnings)
+    return warnings
 
 
 def validate_append_only_history(

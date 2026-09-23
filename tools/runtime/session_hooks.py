@@ -9,6 +9,7 @@ import sys
 from pathlib import Path
 
 from _paths import DEFAULT_STORE_NAME, project_design_path, extension_root
+from handoff import view_file_name
 
 PROTOCOL = (
     "This project uses v0.2 artifact records. Views are derived — edit records, "
@@ -24,6 +25,27 @@ PROTOCOL = (
 # an oversized handoff is what caused the whole injected context to blow past
 # the host harness's preview limit and get silently dropped.
 MAX_HANDOFF_BYTES = 16384
+
+# Each surfaced constraint statement is cut to this length -- hook-start
+# already bounds the count (see artifacts.MAX_HOOK_CONSTRAINTS); this bounds
+# the size of each item too, so one verbose statement can't dominate.
+MAX_CONSTRAINT_STATEMENT_CHARS = 220
+
+
+def _render_constraints(constraints: dict) -> list[str]:
+    items = constraints.get("items") or []
+    if not items:
+        return []
+    lines = ["", "Active constraints:"]
+    for item in items:
+        statement = (item.get("statement") or "").strip()
+        if len(statement) > MAX_CONSTRAINT_STATEMENT_CHARS:
+            statement = statement[:MAX_CONSTRAINT_STATEMENT_CHARS].rstrip() + "…"
+        lines.append(f"- **{item.get('subject')}**: {statement}")
+    omitted = constraints.get("total", len(items)) - len(items)
+    if omitted > 0:
+        lines.append(f"(+{omitted} more not shown)")
+    return lines
 
 
 def artifacts_cli() -> Path:
@@ -53,13 +75,11 @@ def _write_views(store: Path, views: dict[str, str]) -> None:
     views_dir = store / "views"
     views_dir.mkdir(parents=True, exist_ok=True)
     for view_id, markdown in views.items():
-        name = view_id.split(":")[-1] + ".md"
-        (views_dir / name).write_text(markdown)
+        (views_dir / view_file_name(view_id)).write_text(markdown)
 
 
 def _view_file_path(store: Path, view_id: str) -> Path:
-    name = view_id.split(":")[-1] + ".md"
-    return store / "views" / name
+    return store / "views" / view_file_name(view_id)
 
 
 def _truncate_handoff(handoff: str, full_path: Path) -> str:
@@ -105,6 +125,9 @@ def cmd_start(fmt: str, data: dict) -> dict:
                 else store / "views" / "handoff.md"
             )
             parts.extend(["", _truncate_handoff(handoff, handoff_path)])
+        constraints = body.get("constraints") or {}
+        if isinstance(constraints, dict):
+            parts.extend(_render_constraints(constraints))
         if isinstance(views, dict):
             other_paths = [
                 str(_view_file_path(store, view_id))

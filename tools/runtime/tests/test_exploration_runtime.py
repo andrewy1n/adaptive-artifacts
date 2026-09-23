@@ -102,7 +102,7 @@ class ExplorationRuntimeTests(unittest.TestCase):
         )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         body = load_json(r.stdout)
-        successor = body["new"]
+        successor = body["record"]
         self.assertNotEqual(successor["id"], original["id"])
         self.assertEqual(successor["relationships"]["corrects"], [original["id"]])
         live_original = load_json(
@@ -245,8 +245,8 @@ class ExplorationRuntimeTests(unittest.TestCase):
             ).stdout
         )
         self.assertEqual(original["lifecycle_state"], "disputed")
-        self.assertEqual(original["relationships"]["contradicted_by"], [body["new"]["id"]])
-        self.assertEqual(body["new"]["lifecycle_state"], "asserted")
+        self.assertEqual(original["relationships"]["contradicted_by"], [body["record"]["id"]])
+        self.assertEqual(body["record"]["lifecycle_state"], "asserted")
         r = run_cli("validate", store=self.store)
         self.assertEqual(r.returncode, 0, r.stdout)
 
