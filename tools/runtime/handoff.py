@@ -125,6 +125,7 @@ def _record_line(
     *,
     store_root: str = _DEFAULT_STORE_ROOT,
     extra_bits: list[str] | None = None,
+    label_fields: bool = False,
 ) -> str:
     payload = record.get("payload") or {}
     requested = role.get("requires_payload") or []
@@ -136,7 +137,7 @@ def _record_line(
         value = _field_value(record, field)
         if value is None or value == "":
             continue
-        bits.append(str(value))
+        bits.append(f"{field}: {value}" if label_fields else str(value))
     bits.extend(extra_bits or [])
     summary = "; ".join(bits)
     # owner renders in its own slot rather than the summary, but still only when
@@ -334,7 +335,13 @@ def generate_view(
             for record in items:
                 extra_bits = _status_bits(record, parameters, tally_records)
                 lines.append(
-                    _record_line(record, role, store_root=store_root, extra_bits=extra_bits)
+                    _record_line(
+                        record,
+                        role,
+                        store_root=store_root,
+                        extra_bits=extra_bits,
+                        label_fields=bool(parameters.get("label_fields")),
+                    )
                 )
             lines.append("")
     return "\n".join(lines)

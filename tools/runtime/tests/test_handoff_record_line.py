@@ -188,6 +188,61 @@ class RecordLineAllowlistTests(unittest.TestCase):
         self.assertNotIn("X" * 100, markdown)
 
 
+class RecordLineLabelFieldsTests(unittest.TestCase):
+    def test_label_fields_renders_field_value_pairs_in_declared_order(self):
+        record = _record(next="ship it", goal="hit the milestone")
+        role = _role(requires_payload=["next", "goal"])
+        line = _record_line(record, role, label_fields=True)
+        self.assertEqual(
+            line,
+            f"- **the subject**: next: ship it; goal: hit the milestone _(id: {_expected_link('rec-1')})_",
+        )
+
+    def test_label_fields_keeps_skipping_empty_values(self):
+        record = _record(goal="ship it", note="")
+        role = _role(requires_payload=["goal", "note"])
+        line = _record_line(record, role, label_fields=True)
+        self.assertIn("goal: ship it _(", line)
+        self.assertNotIn("note", line)
+
+    def test_label_fields_uses_declared_name_for_derived_fields(self):
+        record = _record(goal="ship it")
+        record["derived"] = {"wave": 2}
+        role = _role(requires_payload=["goal", "derived.wave"])
+        line = _record_line(record, role, label_fields=True)
+        self.assertIn("goal: ship it; derived.wave: 2", line)
+
+    def test_label_fields_does_not_label_owner_twice(self):
+        record = _record(goal="ship it", owner="agent")
+        role = _role(requires_payload=["goal", "owner"])
+        line = _record_line(record, role, label_fields=True)
+        self.assertEqual(line.count("owner:"), 1)
+        self.assertIn(f"_(owner: agent, id: {_expected_link('rec-1')})_", line)
+
+    def test_default_is_unlabeled(self):
+        record = _record(next="ship it", goal="hit the milestone")
+        role = _role(requires_payload=["next", "goal"])
+        self.assertEqual(_record_line(record, role), _record_line(record, role, label_fields=False))
+        self.assertIn("ship it; hit the milestone", _record_line(record, role))
+
+    def test_label_fields_view_parameter_labels_rendered_lines(self):
+        role = _role(requires_payload=["goal"])
+        contract = _contract("demo:view", [role])
+        contract["views"][0]["parameters"] = {"label_fields": True}
+        markdown = generate_view(contract, "demo:view", [_record(goal="ship it")])
+        self.assertIn("- **the subject**: goal: ship it _(id:", markdown)
+
+    def test_view_without_label_fields_renders_exactly_as_before(self):
+        role = _role(requires_payload=["goal"])
+        records = [_record(goal="ship it")]
+        plain = generate_view(_contract("demo:view", [role]), "demo:view", records)
+        explicit_false = _contract("demo:view", [role])
+        explicit_false["views"][0]["parameters"] = {"label_fields": False}
+        self.assertIn("- **the subject**: ship it _(id:", plain)
+        self.assertNotIn("goal:", plain)
+        self.assertEqual(plain, generate_view(explicit_false, "demo:view", records))
+
+
 class GenerateViewGroupingAndHeadingsTests(unittest.TestCase):
     def test_grouping_and_headings_unchanged_by_allowlisting(self):
         role = _role(name="thing", requires_payload=["goal"])

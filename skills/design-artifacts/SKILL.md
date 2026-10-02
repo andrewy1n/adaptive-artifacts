@@ -99,7 +99,7 @@ backends `0.4.0`. Default backend: `git-filesystem`. `overrides` stay
 
 Also propose, where relevant:
 
-- `view_params` (`group_by` / `order_by` as a view allows)
+- `view_params` (`group_by` / `order_by` / `label_fields` as a view allows)
 - `source_revisions` for external truth
 - occupancy only when selecting a compatible non-default occupant
 - `gaps` for recurring needs that are not yet types, not for missing
