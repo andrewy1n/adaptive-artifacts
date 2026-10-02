@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import hashlib
 import json
+import re
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -20,7 +22,9 @@ DERIVED_FIELDS = frozenset({"ready", "wave", "referenced_by"})
 
 # equals alone cannot express "open work" once status lives in the lifecycle:
 # there is no single state meaning not-finished.
-SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of"})
+SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of", "within"})
+WINDOW_PATTERN = re.compile(r"([1-9][0-9]*)([mhd])")
+WINDOW_UNITS = {"m": "minutes", "h": "hours", "d": "days"}
 EXPECTED_BACKEND_GUARANTEES = {
     "writer_model": "single_writer",
     "record_write": "atomic_replace",
@@ -37,6 +41,13 @@ def canonical_digest(data: Any) -> str:
 
 def contract_digest(contract: dict[str, Any]) -> str:
     return canonical_digest(contract)
+
+
+def parse_window(value: Any) -> timedelta | None:
+    match = WINDOW_PATTERN.fullmatch(value) if isinstance(value, str) else None
+    if match is None:
+        return None
+    return timedelta(**{WINDOW_UNITS[match.group(2)]: int(match.group(1))})
 
 
 def _validate_role_selection(role: dict[str, Any], occupant: dict[str, Any]) -> None:
@@ -60,7 +71,16 @@ def _validate_role_selection(role: dict[str, Any], occupant: dict[str, Any]) -> 
         if operator == "any_of" and not isinstance(expected, list):
             raise ContractError(f"{role.get('name')}: any_of takes a list")
         field = clause["field"]
-        if field == "lifecycle_state":
+        if (field == "recorded_at") != (operator == "within"):
+            raise ContractError(
+                f"{role.get('name')}: within applies only to recorded_at, and recorded_at only to within"
+            )
+        if field == "recorded_at":
+            if parse_window(expected) is None:
+                raise ContractError(
+                    f"{role.get('name')}: within takes a window like '24h', '7d', '30m'"
+                )
+        elif field == "lifecycle_state":
             wanted = expected if operator == "any_of" else [expected]
             unknown = [value for value in wanted if value not in occupant["lifecycle"]["states"]]
             if unknown:
@@ -237,7 +257,9 @@ def role_occupants(view: dict[str, Any]) -> dict[str, str]:
 
 
 def record_matches_selection(
-    record: dict[str, Any], selection: dict[str, Any]
+    record: dict[str, Any],
+    selection: dict[str, Any],
+    now: datetime | None = None,
 ) -> bool:
     clauses = selection.get("all")
     if not isinstance(clauses, list):
@@ -248,6 +270,17 @@ def record_matches_selection(
         if len(operators) != 1 or not operators <= SELECTION_OPERATORS:
             raise ContractError("invalid view role selection clause")
         operator = operators.pop()
+        if field == "recorded_at" and operator == "within":
+            window = parse_window(clause[operator])
+            if window is None:
+                raise ContractError(f"invalid recorded_at window {clause[operator]!r}")
+            recorded_at = record.get("recorded_at")
+            if not recorded_at:
+                return False
+            current = now or datetime.now(timezone.utc)
+            if datetime.fromisoformat(recorded_at) < current - window:
+                return False
+            continue
         if field == "lifecycle_state":
             actual = record.get("lifecycle_state")
         elif isinstance(field, str) and field.startswith("payload."):

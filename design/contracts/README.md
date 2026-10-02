@@ -71,7 +71,15 @@ The predicate grammar is deliberately small:
 ```
 
 Only conjunction, equality, `lifecycle_state`, and one-level
-`payload.<field>` paths are supported. An empty `all` list explicitly
+`payload.<field>` paths are supported, plus one relative time window:
+
+```json
+{ "field": "recorded_at", "within": "24h" }
+```
+
+`within` takes a positive integer with unit `m`, `h`, or `d` and applies
+only to `recorded_at`. It matches records recorded no earlier than that
+long before render time; a record without `recorded_at` never matches. An empty `all` list explicitly
 selects every record of the occupant type. Predicates must be valid for
 every compatible occupant so a project cannot select a role occupant
 that makes the view silently meaningless.

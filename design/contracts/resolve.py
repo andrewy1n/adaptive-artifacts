@@ -6,6 +6,7 @@ from __future__ import annotations
 import argparse
 import hashlib
 import json
+import re
 import sys
 from pathlib import Path
 from typing import Any
@@ -16,7 +17,8 @@ RESOLVED_DIR = ROOT / "resolved"
 
 # Mirrors tools/runtime/contract.py. This module is the design-side resolver and
 # deliberately does not import the runtime, so the two must be changed together.
-SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of"})
+SELECTION_OPERATORS = frozenset({"equals", "not_equals", "any_of", "within"})
+WINDOW_PATTERN = re.compile(r"[1-9][0-9]*[mhd]")
 DERIVED_FIELDS = frozenset({"ready", "wave", "referenced_by"})
 
 # Semantic dimensions owned exclusively by traits.
@@ -534,7 +536,17 @@ def validate_selection(selection: Any, candidates: list[dict], label: str) -> No
             raise ResolveError(f"{label}: any_of takes a list")
         wanted = expected if operator == "any_of" else [expected]
         field = clause["field"]
-        if field == "lifecycle_state":
+        if (field == "recorded_at") != (operator == "within"):
+            raise ResolveError(
+                f"{label}: within applies only to recorded_at, and recorded_at only to within"
+            )
+        if field == "recorded_at":
+            if not isinstance(expected, str) or not WINDOW_PATTERN.fullmatch(expected):
+                raise ResolveError(
+                    f"{label}: within takes a window like '24h', '7d', '30m'"
+                )
+            invalid = []
+        elif field == "lifecycle_state":
             invalid = [
                 record["id"]
                 for record in candidates
