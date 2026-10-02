@@ -6,7 +6,9 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import shutil
 import sys
+import time
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Any
@@ -38,6 +40,8 @@ from contract import (
 )
 from derive import attach_derived_all, compute_derived
 from git_backend import GitContextError, assert_git_context
+from terminal import color_enabled
+from watch import run_watch
 from handoff import (
     generate_all_views,
     generate_handoff,
@@ -84,7 +88,7 @@ EXIT_VALIDATION = 4
 EXIT_STRICT = 5
 
 # Every command that can write a record or the store itself. Reads (get,
-# list, view, handoff, validate, hook-start, hook-stop) and contract tooling
+# list, view, watch, handoff, validate, hook-start, hook-stop) and contract tooling
 # (resolve, lock) are exempt -- a read-only caller needs the whole store
 # visible, just none of it mutable.
 MUTATING_COMMANDS = frozenset(
@@ -1192,6 +1196,45 @@ def cmd_view(args: argparse.Namespace) -> int:
     return EXIT_OK
 
 
+def _positive_interval(value: str) -> float:
+    try:
+        seconds = float(value)
+    except ValueError:
+        seconds = 0.0
+    if seconds <= 0:
+        raise argparse.ArgumentTypeError(f"interval must be a positive number of seconds: {value!r}")
+    return seconds
+
+
+def cmd_watch(args: argparse.Namespace) -> int:
+    try:
+        store, contract = _open_store(args)
+        view_by_id(contract, args.id)
+    except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
+        return _handle_store_open_error(exc)
+    except ContractError as exc:
+        _emit_json({"error": "view_not_found", "message": str(exc)})
+        return EXIT_VALIDATION
+
+    def render() -> str:
+        store, contract = _open_store(args)
+        records = list(store.iter_records())
+        records = attach_derived_all(records, compute_derived(records, contract))
+        return generate_view(contract, args.id, records, store_root=_view_store_root(store))
+
+    return run_watch(
+        render,
+        stream=sys.stdout,
+        sleep=time.sleep,
+        now=lambda: datetime.now().astimezone(),
+        width=lambda: shutil.get_terminal_size().columns,
+        interval=args.interval,
+        store_path=str(store.root.resolve()),
+        color=color_enabled(sys.stdout),
+        once=args.once,
+    )
+
+
 # Roles whose records describe the whole effort, not one work-item, so they
 # scope by payload.effort instead of by subject (see _brief_in_scope).
 _BRIEF_EFFORT_SCOPED_ROLES = frozenset({"constraint", "position"})
@@ -1711,6 +1754,20 @@ def build_parser() -> argparse.ArgumentParser:
         "live store state instead of rendering (exit code %d if stale)" % EXIT_STALE,
     )
     p_view.set_defaults(func=cmd_view)
+
+    p_watch = sub.add_parser(
+        "watch", help="Redraw a derived view in the terminal when its text changes"
+    )
+    p_watch.add_argument("--id", required=True, help="Qualified view id")
+    p_watch.add_argument(
+        "--interval",
+        type=_positive_interval,
+        default=2.0,
+        metavar="S",
+        help="Seconds between renders (default 2)",
+    )
+    p_watch.add_argument("--once", action="store_true", help="Print one frame and exit")
+    p_watch.set_defaults(func=cmd_watch)
 
     p_brief = sub.add_parser(
         "brief", help="Compose a single work-item's brief from linked records"

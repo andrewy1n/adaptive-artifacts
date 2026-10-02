@@ -68,6 +68,7 @@ class ReadOnlyGuardCoversEveryMutatingCommandTests(unittest.TestCase):
             "list",
             "handoff",
             "view",
+            "watch",
             "brief",
             "validate",
             "hook-start",
