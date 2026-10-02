@@ -394,22 +394,21 @@ class InverseIndexCliTests(_StoreTestCase):
 
 
 class BackwardCompatibilityTests(unittest.TestCase):
-    """This repo's own live .artifacts store predates identity/recorded_at
-    entirely -- every record must still load, validate, and keep its exact
-    revision with these fields absent."""
+    """This repo's own live .artifacts store holds records written before
+    identity/recorded_at existed -- each must still load, validate, and keep
+    its exact revision with these fields absent."""
 
     def test_real_store_records_lack_new_fields_and_still_validate(self):
         paths = sorted(glob.glob(str(REPO_ROOT / ".artifacts" / "records" / "**" / "*.md"), recursive=True))
-        self.assertGreater(len(paths), 0)
-        revisions = {}
+        legacy = {}
         for path in paths:
-            text = Path(path).read_text()
-            record = load_record(text, Path(path))
-            self.assertNotIn("identity", record, path)
-            self.assertNotIn("recorded_at", record, path)
+            record = load_record(Path(path).read_text(), Path(path))
             self.assertEqual(record["revision"], compute_revision(record), path)
-            revisions[path] = record["revision"]
-        digest = hashlib.sha256(repr(sorted(revisions.items())).encode()).hexdigest()
+            if "recorded_at" not in record:
+                self.assertNotIn("identity", record, path)
+                legacy[path] = record["revision"]
+        self.assertGreater(len(legacy), 0)
+        digest = hashlib.sha256(repr(sorted(legacy.items())).encode()).hexdigest()
         self.assertTrue(digest)  # sanity: computed without raising
 
     def test_real_store_passes_cli_validate(self):
