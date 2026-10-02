@@ -274,6 +274,8 @@ def compute_derived(
             entry["wave"] = wave.get(record_id)
         if record_id in inverse:
             entry["referenced_by"] = inverse[record_id]
+            if "corrects" in inverse[record_id]:
+                entry["corrected"] = True
         if entry:
             derived[record_id] = entry
     return derived

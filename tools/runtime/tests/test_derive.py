@@ -318,6 +318,26 @@ class ComputeDerivedScopeTests(unittest.TestCase):
         self.assertNotIn("fixture:y", derived)
 
 
+class CorrectedTests(unittest.TestCase):
+    def test_a_record_with_a_correcting_successor_is_corrected(self):
+        contract = _contract(_NO_DEPENDS_DEF)
+        records = [
+            {"id": "old", "record_type": "fixture:plain", "lifecycle_state": "open", "relationships": {}},
+            {"id": "new", "record_type": "fixture:plain", "lifecycle_state": "open", "relationships": {"corrects": ["old"]}},
+        ]
+        derived = compute_derived(records, contract)
+        self.assertIs(derived["old"]["corrected"], True)
+        self.assertNotIn("new", derived)
+
+    def test_other_references_do_not_make_a_record_corrected(self):
+        contract = _contract(_NO_DEPENDS_DEF)
+        records = [
+            {"id": "a", "record_type": "fixture:plain", "lifecycle_state": "open", "relationships": {}},
+            {"id": "b", "record_type": "fixture:plain", "lifecycle_state": "open", "relationships": {"informed_by": ["a"]}},
+        ]
+        self.assertNotIn("corrected", compute_derived(records, contract)["a"])
+
+
 class AttachDerivedTests(unittest.TestCase):
     def test_attach_derived_adds_field_without_mutating_original(self):
         record = _item("fixture:a")
@@ -418,7 +438,7 @@ class ContractDerivedSelectionTests(unittest.TestCase):
             _validate_role_selection(role, _BARE_OCCUPANT)
 
     def test_derived_fields_constant_matches_derive_output_shape(self):
-        self.assertEqual(DERIVED_FIELDS, {"ready", "wave", "referenced_by"})
+        self.assertEqual(DERIVED_FIELDS, {"ready", "wave", "referenced_by", "corrected"})
 
     def test_record_matches_selection_true_and_false_on_derived_field(self):
         selection = {"all": [{"field": "derived.ready", "equals": True}]}
