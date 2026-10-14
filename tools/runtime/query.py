@@ -26,6 +26,7 @@ from typing import Any, Iterable, Pattern
 # like any other namespaced field -- an agent asking "what's ready" shouldn't
 # care that the value isn't stored on disk.
 WHERE_NAMESPACES = ("payload", "derived")
+WHERE_TOP_LEVEL = ("subject", "lifecycle_state")
 DEFAULT_EXCERPT_LIMIT = 160
 
 
@@ -54,9 +55,13 @@ def parse_where(raw: Iterable[str] | None) -> list[tuple[str, str, Any]]:
             )
         field, _, value = item.partition("=")
         namespace, sep, subfield = field.partition(".")
+        if not sep and field in WHERE_TOP_LEVEL:
+            filters.append(("record", field, _coerce_value(value)))
+            continue
         if not sep or namespace not in WHERE_NAMESPACES:
             raise QueryError(
-                f"invalid --where {item!r}; only payload.<field> or derived.<field> is supported"
+                f"invalid --where {item!r}; use subject, lifecycle_state, "
+                "payload.<field>, or derived.<field>"
             )
         if not subfield:
             raise QueryError(f"invalid --where {item!r}; missing {namespace} field name")
@@ -86,7 +91,7 @@ def _same(actual: Any, expected: Any) -> bool:
 
 def where_matches(record: dict[str, Any], filters: list[tuple[str, str, Any]]) -> bool:
     for namespace, field, value in filters:
-        bucket = record.get(namespace) or {}
+        bucket = record if namespace == "record" else record.get(namespace) or {}
         actual = bucket.get(field, _MISSING)
         if actual is _MISSING:
             # An absent field is not a null field; =null must not match "never set".
@@ -96,11 +101,13 @@ def where_matches(record: dict[str, Any], filters: list[tuple[str, str, Any]]) -
     return True
 
 
-def subject_matches(record: dict[str, Any], subject: str | None) -> bool:
+def subject_matches(
+    record: dict[str, Any], subject: str | None, *, exact: bool = False
+) -> bool:
     if subject is None:
         return True
     actual = record.get("subject") or ""
-    return actual == subject or actual.startswith(subject)
+    return actual == subject if exact else actual == subject or actual.startswith(subject)
 
 
 def body_matches(record: dict[str, Any], grep: Pattern[str] | None) -> bool:
@@ -151,6 +158,7 @@ def record_matches(
     *,
     where_filters: list[tuple[str, str, Any]] | None = None,
     subject: str | None = None,
+    exact_subject: bool = False,
     grep: Pattern[str] | None = None,
     since: str | None = None,
     until: str | None = None,
@@ -166,7 +174,7 @@ def record_matches(
     """
     if not where_matches(record, where_filters or []):
         return False
-    if not subject_matches(record, subject):
+    if not subject_matches(record, subject, exact=exact_subject):
         return False
     if not within_time_range(record, since, until):
         return False

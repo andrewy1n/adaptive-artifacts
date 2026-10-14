@@ -406,9 +406,15 @@ class QueryDerivedNamespaceTests(unittest.TestCase):
     def test_parse_where_accepts_payload_namespace_unchanged(self):
         self.assertEqual(parse_where(["payload.goal=ship it"]), [("payload", "goal", "ship it")])
 
-    def test_parse_where_rejects_unknown_namespace(self):
+    def test_parse_where_accepts_supported_top_level_field(self):
+        self.assertEqual(
+            parse_where(["lifecycle_state=done"]),
+            [("record", "lifecycle_state", "done")],
+        )
+
+    def test_parse_where_rejects_unknown_top_level_field(self):
         with self.assertRaises(QueryError):
-            parse_where(["lifecycle_state=done"])
+            parse_where(["unknown=done"])
 
     def test_where_matches_derived_field(self):
         record = {"derived": {"ready": True, "wave": 2}}

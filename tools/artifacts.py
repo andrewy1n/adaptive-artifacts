@@ -143,6 +143,29 @@ def _load_payload(raw: str | None) -> dict[str, Any]:
     return data
 
 
+def _load_payload_args(args: argparse.Namespace) -> dict[str, Any]:
+    payload: dict[str, Any] = {}
+    payload_file = getattr(args, "payload_file", None)
+    if payload_file:
+        try:
+            raw = sys.stdin.read() if payload_file == "-" else Path(payload_file).read_text()
+        except OSError as exc:
+            raise StoreError(f"cannot read --payload-file {payload_file!r}: {exc}") from exc
+        payload.update(_load_payload(raw))
+    payload.update(_load_payload(getattr(args, "payload", None)))
+    for item in getattr(args, "set_values", None) or []:
+        if "=" not in item:
+            raise StoreError(f"invalid --set {item!r}; expected key=value")
+        key, value = item.split("=", 1)
+        if not key:
+            raise StoreError(f"invalid --set {item!r}; key must not be empty")
+        try:
+            payload[key] = json.loads(value)
+        except json.JSONDecodeError:
+            payload[key] = value
+    return payload
+
+
 class _BodyArgError(Exception):
     pass
 
@@ -307,6 +330,20 @@ def _resolve_record_type(
     return None, {"error": "unknown_type", "type": type_arg}
 
 
+def _resolve_view_id(
+    contract: dict[str, Any], view_arg: str
+) -> tuple[str | None, dict[str, Any] | None]:
+    view_ids = [view["id"] for view in contract.get("views") or []]
+    matches = [view_arg] if view_arg in view_ids else [
+        view_id for view_id in view_ids if view_id.endswith(":" + view_arg)
+    ]
+    if len(matches) == 1:
+        return matches[0], None
+    if len(matches) > 1:
+        return None, {"error": "ambiguous_view", "id": view_arg, "candidates": sorted(matches)}
+    return None, {"error": "view_not_found", "id": view_arg}
+
+
 def _find_record_by_id(
     store: Store, defs: dict[str, Any], record_id: str
 ) -> dict[str, Any] | None:
@@ -314,6 +351,58 @@ def _find_record_by_id(
         if store.record_exists(record_type, record_id):
             return store.read_record(record_type, record_id)
     return None
+
+
+def _resolve_target(
+    store: Store, defs: dict[str, Any], args: argparse.Namespace
+) -> tuple[dict[str, Any] | None, dict[str, Any] | None]:
+    type_arg = getattr(args, "type", None)
+    record_type = None
+    if type_arg:
+        record_type, error = _resolve_record_type(defs, type_arg)
+        if error is not None:
+            return None, error
+    record_id = getattr(args, "id", None)
+    if record_id:
+        if record_type:
+            try:
+                return store.read_record(record_type, record_id), None
+            except StoreError:
+                other = _find_record_by_id(store, defs, record_id)
+                if other is not None:
+                    return None, {
+                        "error": "wrong_type",
+                        "message": (
+                            f"record {record_id} is {other['record_type']!r}, "
+                            f"not {record_type!r}"
+                        ),
+                        "actual_type": other["record_type"],
+                    }
+                return None, {"error": "not_found", "message": f"unknown record: {record_id}"}
+        record = _find_record_by_id(store, defs, record_id)
+        if record is None:
+            return None, {"error": "not_found", "message": f"unknown record: {record_id}"}
+        return record, None
+    subject = getattr(args, "subject", None)
+    if not record_type or not subject:
+        return None, {
+            "error": "missing_target",
+            "message": "provide --id, or both --type and --subject",
+        }
+    matches = [
+        record
+        for record in store.iter_records(record_type=record_type)
+        if record.get("subject") == subject and record.get("lifecycle_state") == "active"
+    ]
+    if len(matches) == 1:
+        return matches[0], None
+    return None, {
+        "error": "target_not_unique",
+        "type": record_type,
+        "subject": subject,
+        "matches": len(matches),
+        "message": f"expected exactly one active match, found {len(matches)}",
+    }
 
 
 def _parse_rels(raw: list[str] | None) -> dict[str, list[str]]:
@@ -431,10 +520,11 @@ def _do_create(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _store_open_error(exc)
     defs = record_defs(contract)
-    record_type = args.type
-    if record_type not in defs:
-        return {"error": "unknown_type", "type": record_type}, EXIT_VALIDATION
-    payload = _load_payload(args.payload)
+    record_type, error = _resolve_record_type(defs, args.type)
+    if error is not None:
+        return error, EXIT_VALIDATION
+    assert record_type is not None
+    payload = _load_payload_args(args)
     subject = args.subject or payload.get("subject")
     if not subject:
         return {"error": "missing_subject"}, EXIT_ERROR
@@ -479,10 +569,10 @@ def _do_update(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _store_open_error(exc)
     defs = record_defs(contract)
-    try:
-        old = store.read_record(args.type, args.id)
-    except StoreError as exc:
-        return {"error": "not_found", "message": str(exc)}, EXIT_ERROR
+    old, error = _resolve_target(store, defs, args)
+    if error is not None:
+        return error, EXIT_VALIDATION if error["error"] in {"unknown_type", "ambiguous_type"} else EXIT_ERROR
+    assert old is not None
     record_def = defs[old["record_type"]]
     src = old["lifecycle_state"]
     transition = getattr(args, "transition", None)
@@ -520,9 +610,10 @@ def _do_update(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
         record["epistemic_status"] = dest
     if body_given:
         record["body"] = body_text
-    if args.payload:
+    payload_updates = _load_payload_args(args)
+    if payload_updates:
         record["payload"] = dict(record.get("payload", {}))
-        record["payload"].update(_load_payload(args.payload))
+        record["payload"].update(payload_updates)
     if getattr(args, "rel", None):
         record["relationships"] = dict(record.get("relationships") or {})
         for rel_type, targets in _parse_rels(args.rel).items():
@@ -559,10 +650,10 @@ def _do_supersede(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _store_open_error(exc)
     defs = record_defs(contract)
-    try:
-        old = store.read_record(args.type, args.id)
-    except StoreError as exc:
-        return {"error": "not_found", "message": str(exc)}, EXIT_ERROR
+    old, error = _resolve_target(store, defs, args)
+    if error is not None:
+        return error, EXIT_VALIDATION if error["error"] in {"unknown_type", "ambiguous_type"} else EXIT_ERROR
+    assert old is not None
     record_def = defs[old["record_type"]]
     try:
         reject_append_only_mutation(record_def)
@@ -576,7 +667,7 @@ def _do_supersede(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except _BodyArgError as exc:
         return {"error": "invalid_body", "message": str(exc)}, EXIT_ERROR
     new_payload = dict(old.get("payload", {}))
-    new_payload.update(_load_payload(args.payload))
+    new_payload.update(_load_payload_args(args))
     new_id = store.new_id()
     new_record = _base_record(
         old["record_type"],
@@ -632,29 +723,41 @@ def cmd_get(args: argparse.Namespace) -> int:
         if record is None:
             _emit_json({"error": "not_found", "message": f"unknown record: {args.id}"})
             return EXIT_ERROR
-        _emit_json(record)
-        return EXIT_OK
-    try:
-        record = store.read_record(type_arg, args.id)
-    except StoreError as exc:
-        message = str(exc)
-        if not message.startswith("unknown record:"):
-            # Not a "right type, wrong/missing id" case -- e.g. an unsafe or
-            # malformed type string -- surface it exactly as read_record raised it.
-            raise
-        other = _find_record_by_id(store, defs, args.id)
-        if other is not None:
-            _emit_json(
-                {
-                    "error": "wrong_type",
-                    "message": f"record {args.id} is {other['record_type']!r}, not {type_arg!r}",
-                    "actual_type": other["record_type"],
-                }
-            )
+    else:
+        resolved_type, error = _resolve_record_type(defs, type_arg)
+        if error is not None:
+            _emit_json(error)
             return EXIT_ERROR
-        _emit_json({"error": "not_found", "message": message})
-        return EXIT_ERROR
-    _emit_json(record)
+        try:
+            record = store.read_record(resolved_type, args.id)
+        except StoreError as exc:
+            other = _find_record_by_id(store, defs, args.id)
+            if other is not None:
+                _emit_json(
+                    {
+                        "error": "wrong_type",
+                        "message": (
+                            f"record {args.id} is {other['record_type']!r}, "
+                            f"not {resolved_type!r}"
+                        ),
+                        "actual_type": other["record_type"],
+                    }
+                )
+                return EXIT_ERROR
+            _emit_json({"error": "not_found", "message": str(exc)})
+            return EXIT_ERROR
+    if args.body_only:
+        print(record.get("body") or "")
+    elif args.field:
+        value: Any = record
+        for part in args.field.split("."):
+            if not isinstance(value, dict) or part not in value:
+                _emit_json({"error": "field_not_found", "field": args.field})
+                return EXIT_ERROR
+            value = value[part]
+        _emit_json(value)
+    else:
+        _emit_json(record)
     return EXIT_OK
 
 
@@ -697,6 +800,7 @@ def cmd_list(args: argparse.Namespace) -> int:
             record,
             where_filters=where_filters,
             subject=args.subject,
+            exact_subject=args.exact_subject,
             grep=grep,
             since=args.since,
             until=args.until,
@@ -705,8 +809,29 @@ def cmd_list(args: argparse.Namespace) -> int:
     ]
     if args.order_by == "recorded_at":
         matched = order_by_recorded_at(matched)
+    elif args.order_by:
+        matched = sorted(matched, key=lambda record: record.get(args.order_by) or "")
     out_records = matched if args.full else [summarize(record, grep=grep) for record in matched]
-    _emit_json({"records": out_records, "count": len(matched)})
+    if args.fields:
+        fields = [field.strip() for field in args.fields.split(",") if field.strip()]
+        projected = []
+        for record in out_records:
+            item = {}
+            for field in fields:
+                value: Any = record
+                for part in field.split("."):
+                    if not isinstance(value, dict) or part not in value:
+                        value = None
+                        break
+                    value = value[part]
+                item[field] = value
+            projected.append(item)
+        out_records = projected
+    if args.format == "ndjson":
+        for record in out_records:
+            print(json.dumps(record))
+    else:
+        _emit_json({"records": out_records, "count": len(matched)})
     return EXIT_OK
 
 
@@ -716,10 +841,18 @@ def _do_correct(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _store_open_error(exc)
     defs = record_defs(contract)
-    try:
-        old = store.read_record(args.type, args.id)
-    except StoreError as exc:
-        return {"error": "not_found", "message": str(exc)}, EXIT_ERROR
+    old, error = _resolve_target(store, defs, args)
+    if error is not None:
+        return error, EXIT_VALIDATION if error["error"] in {"unknown_type", "ambiguous_type"} else EXIT_ERROR
+    assert old is not None
+    expected_revision = getattr(args, "expected_revision", None)
+    if expected_revision is not None:
+        expected_revision = _resolve_expected_revision(expected_revision, old)
+        if expected_revision != old["revision"]:
+            return {
+                "error": "stale_write",
+                "message": f"expected {expected_revision}, found {old['revision']}",
+            }, EXIT_STALE
     record_def = defs[old["record_type"]]
     if record_def.get("correction") != "successor_record":
         return {
@@ -731,7 +864,7 @@ def _do_correct(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except _BodyArgError as exc:
         return {"error": "invalid_body", "message": str(exc)}, EXIT_ERROR
     new_payload = dict(old.get("payload") or {})
-    new_payload.update(_load_payload(args.payload))
+    new_payload.update(_load_payload_args(args))
     new_id = store.new_id()
     new_record = _base_record(
         old["record_type"],
@@ -765,17 +898,17 @@ def _do_contradict(args: argparse.Namespace) -> tuple[dict[str, Any], int]:
     except (ContractBindingError, StoreNotInitializedError, PartialStoreError) as exc:
         return _store_open_error(exc)
     defs = record_defs(contract)
-    try:
-        old = store.read_record(args.type, args.id)
-    except StoreError as exc:
-        return {"error": "not_found", "message": str(exc)}, EXIT_ERROR
+    old, error = _resolve_target(store, defs, args)
+    if error is not None:
+        return error, EXIT_VALIDATION if error["error"] in {"unknown_type", "ambiguous_type"} else EXIT_ERROR
+    assert old is not None
     record_def = defs[old["record_type"]]
     if record_def.get("contradiction") != "separate_record":
         return {
             "error": "not_contradictable",
             "message": f"{old['record_type']} does not use separate-record contradiction",
         }, EXIT_VALIDATION
-    payload = _load_payload(args.payload)
+    payload = _load_payload_args(args)
     subject = args.subject or payload.get("subject")
     if not subject:
         return {"error": "missing_subject"}, EXIT_ERROR
@@ -861,11 +994,18 @@ def _op_args(base: argparse.Namespace, op: dict[str, Any]) -> argparse.Namespace
         steward=op.get("steward"),
         identity=op.get("identity"),
         payload=json.dumps(payload) if payload is not None else None,
+        payload_file=None,
+        set_values=[],
         rel=op.get("rel") or [],
         body=op.get("body"),
         body_file=op.get("body_file"),
         transition=op.get("transition"),
-        expected_revision=op.get("expected_revision"),
+        expected_revision=op.get(
+            "expected_revision",
+            _CURRENT_REVISION
+            if op.get("op") in {"update", "supersede", "contradict"}
+            else None,
+        ),
     )
 
 
@@ -883,7 +1023,7 @@ def cmd_apply(args: argparse.Namespace) -> int:
     which lines landed. `capture` is excluded -- its bundle-wide compensating
     rollback doesn't compose with per-line continue-and-report.
     """
-    input_arg = getattr(args, "input", "-") or "-"
+    input_arg = getattr(args, "file", None) or getattr(args, "input", "-") or "-"
     text = sys.stdin.read() if input_arg == "-" else Path(input_arg).read_text()
     results: list[dict[str, Any]] = []
     failed = 0
@@ -1133,19 +1273,20 @@ def cmd_view(args: argparse.Namespace) -> int:
         return _handle_store_open_error(exc)
     records = list(store.iter_records())
     records = attach_derived_all(records, compute_derived(records, contract))
+    resolved_id = None
+    if args.id:
+        resolved_id, error = _resolve_view_id(contract, args.id)
+        if error is not None:
+            _emit_json(error)
+            return EXIT_VALIDATION
     if args.check:
         try:
             rendered_text = Path(args.check).read_text()
         except OSError as exc:
             _emit_json({"error": "unreadable_check_path", "path": args.check, "message": str(exc)})
             return EXIT_ERROR
-        if args.id:
-            try:
-                view_by_id(contract, args.id)
-            except ContractError as exc:
-                _emit_json({"error": "view_not_found", "message": str(exc)})
-                return EXIT_VALIDATION
-            view_ids = [args.id]
+        if resolved_id:
+            view_ids = [resolved_id]
             sections = [rendered_text]
         else:
             view_ids = [view["id"] for view in contract.get("views") or []]
@@ -1169,19 +1310,28 @@ def cmd_view(args: argparse.Namespace) -> int:
             return EXIT_STALE
         _emit_json({"status": "fresh", "views": view_ids})
         return EXIT_OK
-    if args.id:
+    if resolved_id:
         try:
-            view_by_id(contract, args.id)
             markdown = generate_view(
-                contract, args.id, records, store_root=_view_store_root(store)
+                contract, resolved_id, records, store_root=_view_store_root(store)
             )
         except ContractError as exc:
             _emit_json({"error": "view_not_found", "message": str(exc)})
             return EXIT_VALIDATION
-        rendered = {args.id: markdown}
+        rendered = {resolved_id: markdown}
     else:
         rendered = generate_all_views(contract, records, store_root=_view_store_root(store))
         markdown = "\n---\n\n".join(rendered.values())
+    if args.write:
+        views_dir = store.root / "views"
+        views_dir.mkdir(parents=True, exist_ok=True)
+        paths = []
+        for view_id, text in rendered.items():
+            path = views_dir / view_file_name(view_id)
+            path.write_text(text)
+            paths.append(str(path))
+        _emit_json({"status": "ok", "paths": paths, "views": list(rendered), "derived": True})
+        return EXIT_OK
     if args.out:
         try:
             out_path = _safe_out_path(store, args.out)
@@ -1563,6 +1713,8 @@ def build_parser() -> argparse.ArgumentParser:
         "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
     )
     p_create.add_argument("--payload", help="JSON payload object")
+    p_create.add_argument("--payload-file", help="Read JSON payload from file ('-' for stdin)")
+    p_create.add_argument("-p", "--set", action="append", default=[], dest="set_values")
     p_create.add_argument(
         "--rel",
         action="append",
@@ -1574,8 +1726,9 @@ def build_parser() -> argparse.ArgumentParser:
     p_create.set_defaults(func=cmd_create)
 
     p_update = sub.add_parser("update", help="Transition or mutate an existing record")
-    p_update.add_argument("--type", required=True)
-    p_update.add_argument("--id", required=True)
+    p_update.add_argument("--type")
+    p_update.add_argument("--id")
+    p_update.add_argument("--subject", help="Target one active record with --type")
     p_update.add_argument(
         "--transition",
         help="Target lifecycle state; omit to patch payload/body/relationships "
@@ -1583,13 +1736,15 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_update.add_argument(
         "--expected-revision",
-        required=True,
+        default=_CURRENT_REVISION,
         help="Exact revision string, or '@current' to re-read and use whatever is current",
     )
     p_update.add_argument(
         "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
     )
     p_update.add_argument("--payload", help="JSON payload updates")
+    p_update.add_argument("--payload-file", help="Read JSON payload updates from file ('-' for stdin)")
+    p_update.add_argument("-p", "--set", action="append", default=[], dest="set_values")
     p_update.add_argument(
         "--rel",
         action="append",
@@ -1601,14 +1756,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_update.set_defaults(func=cmd_update)
 
     p_sup = sub.add_parser("supersede", help="Supersede with a new record id")
-    p_sup.add_argument("--type", required=True)
-    p_sup.add_argument("--id", required=True)
+    p_sup.add_argument("--type")
+    p_sup.add_argument("--id")
+    p_sup.add_argument("--subject", help="Target one active record with --type")
     p_sup.add_argument(
         "--expected-revision",
-        required=True,
+        default=_CURRENT_REVISION,
         help="Exact revision string, or '@current' to re-read and use whatever is current",
     )
     p_sup.add_argument("--payload", help="JSON payload for successor")
+    p_sup.add_argument("--payload-file", help="Read JSON payload from file ('-' for stdin)")
+    p_sup.add_argument("-p", "--set", action="append", default=[], dest="set_values")
     p_sup.add_argument(
         "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
     )
@@ -1619,10 +1777,16 @@ def build_parser() -> argparse.ArgumentParser:
     p_sup.set_defaults(func=cmd_supersede)
 
     p_correct = sub.add_parser("correct", help="Append a correcting successor; original stays recorded")
-    p_correct.add_argument("--type", required=True)
-    p_correct.add_argument("--id", required=True)
+    p_correct.add_argument("--type")
+    p_correct.add_argument("--id")
     p_correct.add_argument("--payload", help="JSON payload overrides for successor")
-    p_correct.add_argument("--subject", help="Successor subject (defaults to original)")
+    p_correct.add_argument("--payload-file", help="Read JSON payload from file ('-' for stdin)")
+    p_correct.add_argument("-p", "--set", action="append", default=[], dest="set_values")
+    p_correct.add_argument("--subject", help="Target subject, and successor subject")
+    p_correct.add_argument(
+        "--expected-revision",
+        help="Optional exact predecessor revision, or '@current'",
+    )
     p_correct.add_argument("--steward", help="Steward identifier")
     p_correct.add_argument(
         "--identity", help="Writer identity (default: $ARTIFACTS_IDENTITY or 'unknown')"
@@ -1636,15 +1800,17 @@ def build_parser() -> argparse.ArgumentParser:
     p_contradict = sub.add_parser(
         "contradict", help="Create a contradicting record and link the original"
     )
-    p_contradict.add_argument("--type", required=True)
-    p_contradict.add_argument("--id", required=True)
+    p_contradict.add_argument("--type")
+    p_contradict.add_argument("--id")
     p_contradict.add_argument(
         "--expected-revision",
-        required=True,
+        default=_CURRENT_REVISION,
         help="Exact revision string, or '@current' to re-read and use whatever is current",
     )
     p_contradict.add_argument("--subject", help="Subject of the contradicting record")
-    p_contradict.add_argument("--payload", required=True, help="JSON payload for the new record")
+    p_contradict.add_argument("--payload", help="JSON payload for the new record")
+    p_contradict.add_argument("--payload-file", help="Read JSON payload from file ('-' for stdin)")
+    p_contradict.add_argument("-p", "--set", action="append", default=[], dest="set_values")
     p_contradict.add_argument("--transition", help="Optional lifecycle transition on the original")
     p_contradict.add_argument("--steward", help="Steward identifier")
     p_contradict.add_argument(
@@ -1680,6 +1846,7 @@ def build_parser() -> argparse.ArgumentParser:
         default="-",
         help="NDJSON file of {op, type, id, ...} operations, or '-' for stdin (default '-')",
     )
+    p_apply.add_argument("--file", help="NDJSON input path (alias for positional input)")
     p_apply.set_defaults(func=cmd_apply)
 
     p_get = sub.add_parser("get", help="Fetch one record")
@@ -1689,6 +1856,10 @@ def build_parser() -> argparse.ArgumentParser:
         "is optional and only narrows a wrong-type mismatch from a not-found",
     )
     p_get.add_argument("--id", required=True)
+    p_get.add_argument("--full", action="store_true", help="Emit the full record (default)")
+    get_shape = p_get.add_mutually_exclusive_group()
+    get_shape.add_argument("--field", help="Emit one dot-separated field from the record")
+    get_shape.add_argument("--body-only", action="store_true", help="Emit only the Markdown body")
     p_get.set_defaults(func=cmd_get)
 
     p_list = sub.add_parser("list", help="List records")
@@ -1709,6 +1880,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_list.add_argument(
         "--subject",
         help="Match records whose subject equals this value, or starts with it (exact-or-prefix)",
+    )
+    p_list.add_argument(
+        "--exact-subject",
+        action="store_true",
+        help="Make --subject an exact-only match",
     )
     p_list.add_argument(
         "--grep",
@@ -1734,10 +1910,12 @@ def build_parser() -> argparse.ArgumentParser:
     )
     p_list.add_argument(
         "--order-by",
-        choices=["recorded_at"],
+        choices=["recorded_at", "subject", "lifecycle_state"],
         dest="order_by",
         help="Sort matched records (oldest recorded_at first; records missing it sort first)",
     )
+    p_list.add_argument("--fields", help="Comma-separated fields to emit (dot paths supported)")
+    p_list.add_argument("--format", choices=["json", "ndjson"], default="json")
     p_list.set_defaults(func=cmd_list)
 
     p_handoff = sub.add_parser("handoff", help="Generate derived handoff markdown")
@@ -1747,6 +1925,11 @@ def build_parser() -> argparse.ArgumentParser:
     p_view = sub.add_parser("view", help="Generate a derived view from the contract")
     p_view.add_argument("--id", help="Qualified view id; omit to render all")
     p_view.add_argument("--out", help="Optional output path under store")
+    p_view.add_argument(
+        "--write",
+        action="store_true",
+        help="Write rendered views to the store's views/<name>.md paths",
+    )
     p_view.add_argument(
         "--check",
         metavar="PATH",
