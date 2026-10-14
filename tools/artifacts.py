@@ -322,6 +322,12 @@ def _resolve_record_type(
     for zero or multiple matches -- callers must not silently treat either
     as "no records".
     """
+    if "/" in type_arg or "\\" in type_arg or type_arg in {".", ".."}:
+        return None, {
+            "error": "invalid_type",
+            "type": type_arg,
+            "message": f"unsafe record type: {type_arg!r}",
+        }
     matches = _match_record_types(defs, type_arg)
     if len(matches) == 1:
         return matches[0], None
