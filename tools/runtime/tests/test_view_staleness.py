@@ -23,6 +23,9 @@ from support import git, run_cli  # noqa: E402
 from handoff import embedded_view_state_digest, generate_view, view_is_stale  # noqa: E402
 
 SEED = Path("/home/ayin/aa-scratch/seed-artifacts")
+_SKIP_NO_SEED = unittest.skipUnless(
+    SEED.is_dir(), f"seed fixture missing: {SEED}"
+)
 
 EXIT_OK = 0
 EXIT_STALE = 2
@@ -88,6 +91,7 @@ class PureFunctionTests(unittest.TestCase):
         self.assertIsNone(embedded_view_state_digest("no header at all"))
 
 
+@_SKIP_NO_SEED
 class ViewCheckCliTests(unittest.TestCase):
     """Against the real 717-record fixture, whose `.artifacts/views/*.md`
     are checked in already fresh."""
@@ -172,6 +176,7 @@ class ViewCheckCliTests(unittest.TestCase):
         self.assertEqual(payload["status"], "fresh")
 
 
+@_SKIP_NO_SEED
 class HookStopStalenessTests(unittest.TestCase):
     def setUp(self):
         self.root = Path(tempfile.mkdtemp(prefix="hook-stop-staleness-"))

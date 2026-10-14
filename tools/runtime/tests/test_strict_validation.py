@@ -23,6 +23,9 @@ from contract import contract_digest  # noqa: E402
 from validation import validate_strict  # noqa: E402
 
 SEED = Path("/home/ayin/aa-scratch/seed-artifacts")
+_SKIP_NO_SEED = unittest.skipUnless(
+    SEED.is_dir(), f"seed fixture missing: {SEED}"
+)
 
 
 def _work_item(record_id: str, deps: list[str] | None = None) -> dict:
@@ -218,6 +221,7 @@ class TerminalStateFailingCheckTests(unittest.TestCase):
         self.assertEqual(warnings, [])
 
 
+@_SKIP_NO_SEED
 class StrictCliTests(unittest.TestCase):
     """End-to-end against the real 717-record fixture: strict mode surfaces
     the real failure it was written for, and default `validate` is unchanged."""
