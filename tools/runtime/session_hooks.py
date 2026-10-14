@@ -8,7 +8,7 @@ import subprocess
 import sys
 from pathlib import Path
 
-from _paths import DEFAULT_STORE_NAME, project_design_path, extension_root
+from _paths import default_store_path, project_design_path, extension_root
 from handoff import view_file_name
 
 PROTOCOL = (
@@ -108,9 +108,11 @@ def cmd_start(fmt: str, data: dict) -> dict:
     if result.returncode != 0:
         ctx = f"v0.2 session-start failed:\n{result.stdout or result.stderr}"
     else:
-        store = root / DEFAULT_STORE_NAME
+        store = default_store_path(root)
         views = body.get("views") or {}
-        if isinstance(views, dict) and views:
+        existing_views = (store / "views").is_dir() and any((store / "views").glob("*.md"))
+        stale_empty_read = body.get("records") == 0 and existing_views
+        if isinstance(views, dict) and views and not stale_empty_read:
             _write_views(store, views)
         parts = [PROTOCOL]
         handoff = body.get("handoff") or ""
@@ -178,7 +180,7 @@ def cmd_stop(fmt: str, data: dict) -> dict:
         if data.get("status") != "completed" or data.get("loop_count", 0) > 0:
             return {}
     root = _root_from_hook(data, fmt)
-    store = root / DEFAULT_STORE_NAME
+    store = default_store_path(root)
     design = project_design_path(root)
     if not store.exists() and not design.is_file():
         return {}

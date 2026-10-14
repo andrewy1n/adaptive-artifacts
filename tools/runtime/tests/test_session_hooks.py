@@ -16,7 +16,7 @@ TESTS = Path(__file__).resolve().parent
 RUNTIME = TESTS.parent
 sys.path.insert(0, str(RUNTIME))
 
-from _paths import EXTENSION_ROOT, extension_root  # noqa: E402
+from _paths import EXTENSION_ROOT, default_store_path, extension_root  # noqa: E402
 from record_file import dump_record, load_record  # noqa: E402
 from support import RESOLVED, make_git_repo, run_cli, sample_position_payload  # noqa: E402
 
@@ -314,6 +314,42 @@ class SessionHooksTests(unittest.TestCase):
         self.assertEqual(hook.returncode, 0, hook.stderr)
         body = json.loads(hook.stdout)
         self.assertIn("Views are derived", body["additional_context"])
+
+    def test_start_zero_record_result_does_not_clobber_existing_views(self):
+        view = self.store / "views" / "handoff.md"
+        view.parent.mkdir(parents=True)
+        view.write_text("# Existing handoff\n\nKeep me.\n")
+        with patch("session_hooks._run_cli") as mock_run:
+            mock_run.return_value = subprocess.CompletedProcess(
+                args=["artifacts.py", "hook-start"],
+                returncode=0,
+                stdout=json.dumps(
+                    {
+                        "handoff": "# Project Handoff\n\n_No matching records._\n",
+                        "views": {
+                            "project:handoff": "# Project Handoff\n\n_No matching records._\n"
+                        },
+                        "records": 0,
+                    }
+                ),
+                stderr="",
+            )
+            import session_hooks
+
+            session_hooks.cmd_start("--cursor", {"workspace_roots": [str(self.repo)]})
+        self.assertEqual(view.read_text(), "# Existing handoff\n\nKeep me.\n")
+
+    def test_default_store_path_finds_main_worktree_store(self):
+        self.store.mkdir()
+        linked = self.repo.parent / f"{self.repo.name}-linked"
+        self.addCleanup(lambda: shutil.rmtree(linked, ignore_errors=True))
+        result = subprocess.run(
+            ["git", "-C", str(self.repo), "worktree", "add", "-q", "-b", "linked-test", str(linked)],
+            capture_output=True,
+            text=True,
+        )
+        self.assertEqual(result.returncode, 0, result.stderr)
+        self.assertEqual(default_store_path(linked).resolve(), self.store.resolve())
 
     def test_stop_failure_message_includes_stderr_when_json_is_empty(self):
         from session_hooks import stop_failure_message
