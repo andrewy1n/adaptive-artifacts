@@ -14,8 +14,13 @@ RUNTIME = TESTS.parent
 TOOLS = RUNTIME.parent
 REPO_ROOT = TOOLS.parent
 CLI = TOOLS / "artifacts.py"
-RESOLVED = REPO_ROOT / ".artifacts" / "resolved-contract.json"
-PROJECT_DESIGN = REPO_ROOT / ".artifacts" / "project-design.json"
+# Runtime unit tests dogfood the continuity contract shapes, not the live
+# se-workflow store contract (this repo's .artifacts/ after cutover).
+_CONTINUITY_FIXTURE = (
+    REPO_ROOT / ".artifacts" / "archive" / "continuity-2026-10-14"
+)
+RESOLVED = _CONTINUITY_FIXTURE / "resolved-contract.json"
+PROJECT_DESIGN = _CONTINUITY_FIXTURE / "project-design.json"
 
 
 def run_cli(

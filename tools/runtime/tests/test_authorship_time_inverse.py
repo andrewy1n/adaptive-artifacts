@@ -394,12 +394,20 @@ class InverseIndexCliTests(_StoreTestCase):
 
 
 class BackwardCompatibilityTests(unittest.TestCase):
-    """This repo's own live .artifacts store holds records written before
-    identity/recorded_at existed -- each must still load, validate, and keep
-    its exact revision with these fields absent."""
+    """Pre-identity/recorded_at record shapes live in the continuity archive
+    after this repo's se-workflow cutover. The live store still validates."""
+
+    _LEGACY_STORE = (
+        REPO_ROOT / ".artifacts" / "archive" / "continuity-2026-10-14"
+    )
 
     def test_real_store_records_lack_new_fields_and_still_validate(self):
-        paths = sorted(glob.glob(str(REPO_ROOT / ".artifacts" / "records" / "**" / "*.md"), recursive=True))
+        paths = sorted(
+            glob.glob(
+                str(self._LEGACY_STORE / "records" / "**" / "*.md"),
+                recursive=True,
+            )
+        )
         legacy = {}
         for path in paths:
             record = load_record(Path(path).read_text(), Path(path))
@@ -419,14 +427,34 @@ class BackwardCompatibilityTests(unittest.TestCase):
         self.assertGreater(out["records"], 0)
 
     def test_real_store_list_and_get_still_work_with_no_new_fields(self):
-        r = run_cli("list", "--type", "project:finding", store=REPO_ROOT / ".artifacts", root=REPO_ROOT, cwd=REPO_ROOT)
+        # Live store (post cutover) still lists/gets. Legacy missing-field
+        # shapes are covered by the archive file walk above.
+        r = run_cli(
+            "list",
+            "--type",
+            "project:finding",
+            store=REPO_ROOT / ".artifacts",
+            root=REPO_ROOT,
+            cwd=REPO_ROOT,
+        )
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         out = load_json(r.stdout)
+        self.assertIn("count", out)
         if out["count"]:
-            # recorded_at is always present in the summary shape, even as None
-            # for a pre-existing record with no such field.
             self.assertIn("recorded_at", out["records"][0])
-            self.assertIsNone(out["records"][0]["recorded_at"])
+            rid = out["records"][0]["id"]
+            g = run_cli(
+                "get",
+                "--type",
+                "project:finding",
+                "--id",
+                rid,
+                store=REPO_ROOT / ".artifacts",
+                root=REPO_ROOT,
+                cwd=REPO_ROOT,
+            )
+            self.assertEqual(g.returncode, 0, g.stdout + g.stderr)
+            self.assertEqual(load_json(g.stdout)["id"], rid)
 
 
 # -- Cross-cutting: determinism -----------------------------------------------
