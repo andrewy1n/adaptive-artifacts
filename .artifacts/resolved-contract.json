@@ -1,13 +1,13 @@
 {
   "format": "adaptive-artifacts/resolved-contract@0.3.0",
-  "project": "adaptive-artifacts",
+  "project": "se-workflow",
   "resolution": {
     "catalog_version": "0.7.0",
     "project_design_format": "0.3.0",
     "resolved_contract_format": "0.3.0",
     "traits_version": "0.4.0",
     "backends_version": "0.4.0",
-    "design_digest": "sha256:807ec85f1f88fc6e88b4774ce011d65571a6eab02d29bc5f3e9d62477a5bbd74",
+    "design_digest": "sha256:b8e5e038d0c6c296061c1271a01f22c417f0c47890960533763b6f512c29c1a9",
     "source_lock": {
       "catalog_version": "0.7.0",
       "catalog": "sha256:d7f0f1d05f8c67f638c0ff1b4ad738161f43c1ec970729709f8f2afc1d8c1eb1",
@@ -60,60 +60,6 @@
   },
   "records": [
     {
-      "id": "project:current-position",
-      "name": "current-position",
-      "namespace": "project",
-      "experimental": false,
-      "traits": [
-        "entity",
-        "stewarded",
-        "current-claim"
-      ],
-      "base_kind": "claim",
-      "required_dimensions": [
-        "identity",
-        "kind",
-        "subject_and_scope",
-        "stewardship",
-        "epistemic_status",
-        "time"
-      ],
-      "payload": [
-        "subject",
-        "position",
-        "scope"
-      ],
-      "lifecycle": {
-        "initial": "active",
-        "states": [
-          "active",
-          "superseded"
-        ],
-        "transitions": {
-          "active": [
-            "superseded"
-          ]
-        }
-      },
-      "relationships": [
-        "supersedes"
-      ],
-      "update": "conditional_replace_with_history",
-      "capture": {
-        "trigger": [
-          "event"
-        ]
-      },
-      "read_policy": "always_loaded",
-      "storage_capabilities": [
-        "conditional_mutation",
-        "history"
-      ],
-      "pattern": "current-status",
-      "purpose": "Live position across a discontinuity",
-      "canonical_for": "the live position of this subject"
-    },
-    {
       "id": "project:active-goal",
       "name": "active-goal",
       "namespace": "project",
@@ -135,7 +81,10 @@
       "payload": [
         "subject",
         "goal",
-        "scope"
+        "scope",
+        "kind",
+        "status",
+        "merged_from"
       ],
       "lifecycle": {
         "initial": "active",
@@ -163,13 +112,23 @@
         "conditional_mutation",
         "history"
       ],
+      "optional_payload": [
+        "status",
+        "merged_from"
+      ],
+      "payload_enum": {
+        "status": [
+          "open",
+          "closed"
+        ]
+      },
       "pattern": "current-status",
-      "purpose": "Live goal",
+      "purpose": "Live outcome of this effort",
       "canonical_for": "the live goal of this subject"
     },
     {
-      "id": "project:next-action",
-      "name": "next-action",
+      "id": "project:current-position",
+      "name": "current-position",
       "namespace": "project",
       "experimental": false,
       "traits": [
@@ -188,8 +147,11 @@
       ],
       "payload": [
         "subject",
-        "next",
-        "scope"
+        "position",
+        "scope",
+        "effort",
+        "phase",
+        "status"
       ],
       "lifecycle": {
         "initial": "active",
@@ -217,49 +179,229 @@
         "conditional_mutation",
         "history"
       ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "optional_payload": [
+        "phase",
+        "status"
+      ],
+      "payload_enum": {
+        "status": [
+          "open",
+          "closed"
+        ]
+      },
       "pattern": "current-status",
-      "purpose": "Live next action",
-      "canonical_for": "the live next action of this subject"
+      "purpose": "Live position: current phase and what is in flight",
+      "canonical_for": "the live position of this subject"
     },
     {
-      "id": "project:active-commitment",
-      "name": "active-commitment",
+      "id": "project:phase",
+      "name": "phase",
       "namespace": "project",
       "experimental": false,
       "traits": [
         "entity",
         "stewarded",
-        "active-undertaking"
+        "staged-progress"
       ],
-      "base_kind": "commitment",
+      "base_kind": "phase",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship"
+      ],
+      "payload": [
+        "subject",
+        "title",
+        "ordinal",
+        "effort"
+      ],
+      "lifecycle": {
+        "initial": "planned",
+        "states": [
+          "planned",
+          "in_progress",
+          "done",
+          "withdrawn",
+          "superseded"
+        ],
+        "transitions": {
+          "planned": [
+            "in_progress",
+            "withdrawn",
+            "superseded"
+          ],
+          "in_progress": [
+            "done",
+            "withdrawn",
+            "superseded"
+          ],
+          "done": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "depends_on"
+      ],
+      "capture": {
+        "trigger": [
+          "explicit_request"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Problem",
+        "Approach",
+        "Exit criteria"
+      ],
+      "pattern": "phase",
+      "purpose": "The plan for one phase of the project: problem, approach, and exit criteria",
+      "canonical_for": "the plan for this phase"
+    },
+    {
+      "id": "project:work-item",
+      "name": "work-item",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "staged-progress"
+      ],
+      "base_kind": "task",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship"
+      ],
+      "payload": [
+        "subject",
+        "title",
+        "phase",
+        "kind",
+        "assignee",
+        "effort",
+        "executor",
+        "requirements",
+        "decisions",
+        "size",
+        "estimate_minutes",
+        "attempts"
+      ],
+      "lifecycle": {
+        "initial": "planned",
+        "states": [
+          "planned",
+          "in_progress",
+          "done",
+          "withdrawn",
+          "superseded"
+        ],
+        "transitions": {
+          "planned": [
+            "in_progress",
+            "withdrawn",
+            "superseded"
+          ],
+          "in_progress": [
+            "done",
+            "withdrawn",
+            "superseded"
+          ],
+          "done": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "depends_on"
+      ],
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Description"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "optional_payload": [
+        "executor",
+        "requirements",
+        "decisions",
+        "size",
+        "estimate_minutes",
+        "attempts"
+      ],
+      "payload_enum": {
+        "executor": [
+          "inline",
+          "subagent"
+        ],
+        "size": [
+          "XS",
+          "S",
+          "M",
+          "L",
+          "XL"
+        ]
+      },
+      "pattern": "task",
+      "purpose": "A unit of work with a staged lifecycle and dependencies on other work",
+      "canonical_for": "the work item for this subject"
+    },
+    {
+      "id": "project:acceptance",
+      "name": "acceptance",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
       "required_dimensions": [
         "identity",
         "kind",
         "subject_and_scope",
         "stewardship",
-        "adoption_or_deontic_status",
+        "epistemic_status",
         "time"
       ],
       "payload": [
         "subject",
-        "actor",
-        "outcome",
-        "owner",
-        "effective_time",
-        "scope"
+        "criterion",
+        "method",
+        "phase",
+        "effort",
+        "verify_command",
+        "requirement"
       ],
       "lifecycle": {
         "initial": "active",
         "states": [
           "active",
-          "completed",
-          "cancelled",
           "superseded"
         ],
         "transitions": {
           "active": [
-            "completed",
-            "cancelled",
             "superseded"
           ]
         }
@@ -267,19 +409,256 @@
       "relationships": [
         "supersedes"
       ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "explicit_request"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "optional_payload": [
+        "requirement"
+      ],
+      "payload_enum": {
+        "method": [
+          "tdd",
+          "check",
+          "manual"
+        ]
+      },
+      "pattern": "definition",
+      "purpose": "What done means for this change",
+      "canonical_for": "what done means for this change"
+    },
+    {
+      "id": "project:constraint",
+      "name": "constraint",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "statement",
+        "applies_to",
+        "effort"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
       "capture": {
         "trigger": [
           "event"
         ]
       },
-      "read_policy": "always_loaded",
+      "read_policy": "routed_by_relevance",
       "storage_capabilities": [
         "conditional_mutation",
         "history"
       ],
-      "pattern": "commitment",
-      "purpose": "Live undertaking",
-      "canonical_for": "the live undertaking of this actor"
+      "required_sections": [
+        "Basis"
+      ],
+      "pattern": "definition",
+      "purpose": "A confirmed constraint that is not a choice and has no alternatives",
+      "canonical_for": "the confirmed constraint for this subject"
+    },
+    {
+      "id": "project:check-run",
+      "name": "check-run",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence",
+        "evidence-linked"
+      ],
+      "base_kind": "event",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "criterion_id",
+        "revision",
+        "result",
+        "effort",
+        "method",
+        "signed_by",
+        "requirement",
+        "evidence_kind",
+        "exit_code",
+        "duration_s",
+        "output_sha256",
+        "runner",
+        "diff_sha256",
+        "failing_node_ids",
+        "signed_note"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects",
+        "informed_by"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "queried",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "optional_payload": [
+        "requirement",
+        "evidence_kind",
+        "exit_code",
+        "duration_s",
+        "output_sha256",
+        "runner",
+        "diff_sha256",
+        "failing_node_ids",
+        "signed_note"
+      ],
+      "payload_enum": {
+        "result": [
+          "pass",
+          "fail",
+          "blocked",
+          "insufficient"
+        ],
+        "method": [
+          "tdd",
+          "check",
+          "manual",
+          "review"
+        ],
+        "evidence_kind": [
+          "unit",
+          "integration",
+          "acceptance",
+          "static",
+          "types",
+          "security",
+          "property",
+          "fuzz",
+          "review",
+          "runtime",
+          "other"
+        ]
+      },
+      "pattern": "event",
+      "purpose": "That this criterion was tested at a revision",
+      "canonical_for": "that this criterion was tested at this revision"
+    },
+    {
+      "id": "project:decision",
+      "name": "decision",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim",
+        "contradictable"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "choice",
+        "alternatives",
+        "phase",
+        "effort"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes",
+        "contradicted_by"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Rationale",
+        "Counter-argument"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "pattern": "decision",
+      "purpose": "An adopted choice among alternatives",
+      "canonical_for": "the adopted choice for this question"
     },
     {
       "id": "project:continuity-question",
@@ -302,7 +681,8 @@
         "subject",
         "owner",
         "blocking",
-        "scope"
+        "scope",
+        "answer"
       ],
       "lifecycle": {
         "initial": "open",
@@ -336,55 +716,50 @@
       "storage_capabilities": [
         "conditional_mutation"
       ],
+      "optional_payload": [
+        "answer"
+      ],
       "pattern": "question",
-      "purpose": "Blocking unknown for session continuity",
+      "purpose": "A blocker that stops dispatch or resume",
       "canonical_for": "whether this unknown blocks continuity"
     },
     {
-      "id": "project:investigation-question",
-      "name": "investigation-question",
+      "id": "project:failed-attempt",
+      "name": "failed-attempt",
       "namespace": "project",
       "experimental": false,
       "traits": [
         "entity",
-        "stewarded",
-        "open-question"
+        "occurrence",
+        "evidence-linked"
       ],
-      "base_kind": "question",
+      "base_kind": "event",
       "required_dimensions": [
         "identity",
         "kind",
         "subject_and_scope",
-        "stewardship"
+        "provenance",
+        "time"
       ],
       "payload": [
         "subject",
-        "motivation",
-        "owner"
+        "attempted_action",
+        "retry_when",
+        "effort"
       ],
       "lifecycle": {
-        "initial": "open",
+        "initial": "recorded",
         "states": [
-          "open",
-          "answered",
-          "deferred",
-          "closed"
+          "recorded"
         ],
-        "transitions": {
-          "open": [
-            "answered",
-            "deferred",
-            "closed"
-          ],
-          "deferred": [
-            "open",
-            "closed"
-          ]
-        }
+        "transitions": {}
       },
       "relationships": [
-        "resolves"
+        "corrects",
+        "informed_by"
       ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
       "capture": {
         "trigger": [
           "event"
@@ -392,11 +767,11 @@
       },
       "read_policy": "routed_by_relevance",
       "storage_capabilities": [
-        "conditional_mutation"
+        "append_with_audit"
       ],
-      "pattern": "question",
-      "purpose": "Unknown under investigation",
-      "canonical_for": "the open investigation unknown"
+      "pattern": "event",
+      "purpose": "An approach that should not be retried as-is",
+      "canonical_for": "that this approach was abandoned"
     },
     {
       "id": "project:investigation-observation",
@@ -420,7 +795,8 @@
         "source",
         "observed_time",
         "environment",
-        "what_was_observed"
+        "what_was_observed",
+        "effort"
       ],
       "lifecycle": {
         "initial": "recorded",
@@ -444,7 +820,7 @@
         "append_with_audit"
       ],
       "pattern": "observation",
-      "purpose": "What was observed during investigation",
+      "purpose": "What was observed while diagnosing or evaluating",
       "canonical_for": "what was observed in this investigation"
     },
     {
@@ -468,7 +844,10 @@
         "subject",
         "claim",
         "basis",
-        "invalidated_when"
+        "invalidated_when",
+        "effort",
+        "needs",
+        "resolution_note"
       ],
       "lifecycle": {
         "initial": "asserted",
@@ -516,21 +895,28 @@
         "conditional_mutation",
         "history"
       ],
+      "required_sections": [
+        "Evidence",
+        "Consequence",
+        "Follow-up"
+      ],
+      "optional_payload": [
+        "resolution_note"
+      ],
       "pattern": "finding",
-      "purpose": "Contingent investigation conclusion",
+      "purpose": "Root cause or comparative evaluation conclusion",
       "canonical_for": "the investigation conclusion for this claim"
     },
     {
-      "id": "project:failed-attempt",
-      "name": "failed-attempt",
+      "id": "project:assignment",
+      "name": "assignment",
       "namespace": "project",
       "experimental": false,
       "traits": [
         "entity",
-        "occurrence",
-        "evidence-linked"
+        "occurrence"
       ],
-      "base_kind": "event",
+      "base_kind": "instruction",
       "required_dimensions": [
         "identity",
         "kind",
@@ -540,8 +926,9 @@
       ],
       "payload": [
         "subject",
-        "attempted_action",
-        "retry_when"
+        "work_item",
+        "executor",
+        "effort"
       ],
       "lifecycle": {
         "initial": "recorded",
@@ -551,8 +938,7 @@
         "transitions": {}
       },
       "relationships": [
-        "corrects",
-        "informed_by"
+        "corrects"
       ],
       "correction": "successor_record",
       "correction_status": "derived_from_successor",
@@ -565,9 +951,614 @@
       "storage_capabilities": [
         "append_with_audit"
       ],
-      "pattern": "event",
-      "purpose": "Abandoned approach",
-      "canonical_for": "that this approach was abandoned"
+      "required_sections": [
+        "Orientation"
+      ],
+      "payload_references": {
+        "work_item": "project:work-item"
+      },
+      "pattern": "instruction",
+      "purpose": "What the orchestrator handed an executor for a work-item",
+      "canonical_for": "the dispatch of this work-item to this executor"
+    },
+    {
+      "id": "project:assignment-amendment",
+      "name": "assignment-amendment",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "instruction",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "assignment",
+        "effort"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "required_sections": [
+        "Correction"
+      ],
+      "payload_references": {
+        "assignment": "project:assignment"
+      },
+      "pattern": "instruction",
+      "purpose": "A mid-flight correction to an assignment already in progress",
+      "canonical_for": "the correction issued to this assignment"
+    },
+    {
+      "id": "project:execution-report",
+      "name": "execution-report",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "observation",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "work_item",
+        "assignment",
+        "result",
+        "verdict",
+        "revision"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "queried",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "payload_references": {
+        "work_item": "project:work-item",
+        "assignment": "project:assignment"
+      },
+      "pattern": "observation",
+      "purpose": "What an executor returned for its assignment, body verbatim",
+      "canonical_for": "what this executor returned for this assignment"
+    },
+    {
+      "id": "project:specification",
+      "name": "specification",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "weight",
+        "phase",
+        "effort",
+        "requirements"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "explicit_request"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Requirements",
+        "Acceptance criteria",
+        "Constraints",
+        "Non-goals",
+        "Invariants",
+        "Assumptions"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "payload_enum": {
+        "weight": [
+          "light",
+          "full"
+        ]
+      },
+      "pattern": "definition",
+      "purpose": "What must be true for this phase",
+      "canonical_for": "what must be true for this phase"
+    },
+    {
+      "id": "project:design",
+      "name": "design",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "phase",
+        "effort",
+        "decisions"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "explicit_request"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Architecture",
+        "Interfaces",
+        "Decisions",
+        "Invariants",
+        "Assumptions",
+        "Tradeoffs",
+        "Risks"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "pattern": "definition",
+      "purpose": "How the specification should work",
+      "canonical_for": "how the specification should work"
+    },
+    {
+      "id": "project:integration-report",
+      "name": "integration-report",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "observation",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "phase",
+        "effort",
+        "result",
+        "revision"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "queried",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "required_sections": [
+        "Interfaces",
+        "Assumptions",
+        "Invariants",
+        "Conflicts"
+      ],
+      "payload_enum": {
+        "result": [
+          "pass",
+          "fail",
+          "blocked"
+        ]
+      },
+      "pattern": "observation",
+      "purpose": "Semantic integration of parallel work, distinct from a git merge",
+      "canonical_for": "the semantic integration of parallel work for this phase"
+    },
+    {
+      "id": "project:assessment",
+      "name": "assessment",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "requirement",
+        "status",
+        "level",
+        "next",
+        "confidence",
+        "phase",
+        "effort",
+        "missing"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "required_sections": [
+        "Evidence",
+        "Missing",
+        "Reason"
+      ],
+      "optional_payload": [
+        "level",
+        "missing"
+      ],
+      "payload_enum": {
+        "status": [
+          "verified",
+          "failed",
+          "insufficient",
+          "blocked"
+        ],
+        "level": [
+          "implementation",
+          "design",
+          "plan",
+          "specification",
+          "integration",
+          "verification",
+          "environment",
+          "unknown"
+        ],
+        "next": [
+          "specify",
+          "design",
+          "plan",
+          "execute",
+          "integrate",
+          "verify",
+          "release"
+        ],
+        "confidence": [
+          "high",
+          "low"
+        ]
+      },
+      "pattern": "current-status",
+      "purpose": "Given the check-runs, what the requirement's evidence means and which stage is next. A check-run does not carry this.",
+      "canonical_for": "what this requirement's evidence means and which stage is next"
+    },
+    {
+      "id": "project:release",
+      "name": "release",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "state",
+        "phase",
+        "effort"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "always_loaded",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "payload_enum": {
+        "state": [
+          "ready",
+          "merged",
+          "artifact",
+          "deploying",
+          "deployed",
+          "failed"
+        ]
+      },
+      "pattern": "current-status",
+      "purpose": "Ready means every requirement is verified. It is not deployment. The other states exist for a later phase.",
+      "canonical_for": "whether this effort's requirements are ready"
+    },
+    {
+      "id": "project:feedback",
+      "name": "feedback",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "occurrence"
+      ],
+      "base_kind": "observation",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "provenance",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "source",
+        "signal",
+        "effort",
+        "phase"
+      ],
+      "lifecycle": {
+        "initial": "recorded",
+        "states": [
+          "recorded"
+        ],
+        "transitions": {}
+      },
+      "relationships": [
+        "corrects"
+      ],
+      "correction": "successor_record",
+      "correction_status": "derived_from_successor",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "queried",
+      "storage_capabilities": [
+        "append_with_audit"
+      ],
+      "required_sections": [
+        "Signal"
+      ],
+      "optional_payload": [
+        "phase"
+      ],
+      "pattern": "observation",
+      "purpose": "An external signal engage can route into specify. Nothing collects it.",
+      "canonical_for": "the external signal engage can route into specify"
+    },
+    {
+      "id": "project:backlog-item",
+      "name": "backlog-item",
+      "namespace": "project",
+      "experimental": false,
+      "traits": [
+        "entity",
+        "stewarded",
+        "current-claim"
+      ],
+      "base_kind": "claim",
+      "required_dimensions": [
+        "identity",
+        "kind",
+        "subject_and_scope",
+        "stewardship",
+        "epistemic_status",
+        "time"
+      ],
+      "payload": [
+        "subject",
+        "effort",
+        "status",
+        "source",
+        "phase"
+      ],
+      "lifecycle": {
+        "initial": "active",
+        "states": [
+          "active",
+          "superseded"
+        ],
+        "transitions": {
+          "active": [
+            "superseded"
+          ]
+        }
+      },
+      "relationships": [
+        "supersedes"
+      ],
+      "update": "conditional_replace_with_history",
+      "capture": {
+        "trigger": [
+          "event"
+        ]
+      },
+      "read_policy": "routed_by_relevance",
+      "storage_capabilities": [
+        "conditional_mutation",
+        "history"
+      ],
+      "payload_references": {
+        "phase": "project:phase"
+      },
+      "optional_payload": [
+        "source",
+        "phase"
+      ],
+      "payload_enum": {
+        "status": [
+          "open",
+          "promoted",
+          "dismissed"
+        ]
+      },
+      "pattern": "current-status",
+      "purpose": "Deferred work parked on an effort until promoted or dismissed",
+      "canonical_for": "the deferred backlog item for this subject"
     }
   ],
   "views": [
@@ -578,7 +1569,7 @@
       "owns_facts": false,
       "freshness": "on_demand_or_handoff",
       "parameters": {
-        "group_by": "scope"
+        "group_by": "effort"
       },
       "roles": [
         {
@@ -590,7 +1581,8 @@
           ],
           "requires_payload": [
             "goal",
-            "scope"
+            "scope",
+            "kind"
           ],
           "base_kind": "claim",
           "selection": {
@@ -598,6 +1590,10 @@
               {
                 "field": "lifecycle_state",
                 "equals": "active"
+              },
+              {
+                "field": "payload.status",
+                "not_equals": "closed"
               }
             ]
           },
@@ -623,6 +1619,10 @@
               {
                 "field": "lifecycle_state",
                 "equals": "active"
+              },
+              {
+                "field": "payload.status",
+                "not_equals": "closed"
               }
             ]
           },
@@ -632,52 +1632,30 @@
           ]
         },
         {
-          "name": "next",
+          "name": "in-progress",
           "requires": [
             "entity",
             "stewarded",
-            "current-claim"
+            "staged-progress"
           ],
           "requires_payload": [
-            "next",
-            "scope"
+            "title",
+            "phase",
+            "kind",
+            "effort"
           ],
-          "base_kind": "claim",
+          "base_kind": "task",
           "selection": {
             "all": [
               {
                 "field": "lifecycle_state",
-                "equals": "active"
+                "equals": "in_progress"
               }
             ]
           },
-          "occupant": "project:next-action",
+          "occupant": "project:work-item",
           "candidates": [
-            "project:next-action"
-          ]
-        },
-        {
-          "name": "commitment",
-          "requires": [
-            "entity",
-            "stewarded",
-            "active-undertaking"
-          ],
-          "requires_payload": [
-            "scope"
-          ],
-          "base_kind": "commitment",
-          "selection": {
-            "all": [
-              {
-                "field": "lifecycle_state",
-                "equals": "active"
-              }
-            ]
-          },
-          "occupant": "project:active-commitment",
-          "candidates": [
-            "project:active-commitment"
+            "project:work-item"
           ]
         },
         {
@@ -708,12 +1686,209 @@
           "candidates": [
             "project:continuity-question"
           ]
+        },
+        {
+          "name": "needs-human",
+          "requires": [
+            "entity",
+            "epistemic-claim"
+          ],
+          "requires_payload": [
+            "claim",
+            "needs"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "payload.needs",
+                "equals": "human"
+              },
+              {
+                "field": "lifecycle_state",
+                "any_of": [
+                  "asserted",
+                  "supported",
+                  "disputed"
+                ]
+              }
+            ]
+          },
+          "occupant": "project:finding",
+          "candidates": [
+            "project:finding"
+          ]
+        },
+        {
+          "name": "unsigned-manual-check",
+          "requires": [
+            "entity",
+            "occurrence",
+            "evidence-linked"
+          ],
+          "requires_payload": [
+            "criterion_id",
+            "result",
+            "method",
+            "signed_by"
+          ],
+          "base_kind": "event",
+          "selection": {
+            "all": [
+              {
+                "field": "payload.method",
+                "equals": "manual"
+              },
+              {
+                "field": "payload.signed_by",
+                "equals": ""
+              },
+              {
+                "field": "derived.corrected",
+                "not_equals": true
+              }
+            ]
+          },
+          "occupant": "project:check-run",
+          "candidates": [
+            "project:check-run"
+          ]
+        },
+        {
+          "name": "backlog",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "effort",
+            "status"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              },
+              {
+                "field": "payload.status",
+                "equals": "open"
+              }
+            ]
+          },
+          "occupant": "project:backlog-item",
+          "candidates": [
+            "project:current-position",
+            "project:assessment",
+            "project:backlog-item"
+          ]
         }
       ]
     },
     {
-      "id": "project:investigation-summary",
-      "name": "investigation-summary",
+      "id": "project:plan",
+      "name": "plan",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": {
+        "group_by": "phase",
+        "order_by": "ordinal"
+      },
+      "roles": [
+        {
+          "name": "phase",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "ordinal",
+            "effort"
+          ],
+          "base_kind": "phase",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "any_of": [
+                  "planned",
+                  "in_progress"
+                ]
+              }
+            ]
+          },
+          "occupant": "project:phase",
+          "candidates": [
+            "project:phase"
+          ]
+        },
+        {
+          "name": "work",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase",
+            "kind",
+            "effort"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "any_of": [
+                  "planned",
+                  "in_progress"
+                ]
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        },
+        {
+          "name": "acceptance",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "criterion",
+            "method",
+            "effort",
+            "verify_command"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:acceptance",
+          "candidates": [
+            "project:acceptance"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project:verification",
+      "name": "verification",
       "namespace": "project",
       "owns_facts": false,
       "freshness": "on_demand",
@@ -722,23 +1897,53 @@
       },
       "roles": [
         {
-          "name": "question",
+          "name": "acceptance",
           "requires": [
             "entity",
             "stewarded",
-            "open-question"
+            "current-claim"
           ],
           "requires_payload": [
-            "motivation",
-            "owner"
+            "criterion",
+            "method",
+            "effort",
+            "verify_command"
           ],
-          "base_kind": "question",
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:acceptance",
+          "candidates": [
+            "project:acceptance"
+          ]
+        },
+        {
+          "name": "check",
+          "requires": [
+            "entity",
+            "occurrence",
+            "evidence-linked"
+          ],
+          "requires_payload": [
+            "criterion_id",
+            "revision",
+            "result",
+            "method",
+            "signed_by"
+          ],
+          "base_kind": "event",
           "selection": {
             "all": []
           },
-          "occupant": "project:investigation-question",
+          "occupant": "project:check-run",
           "candidates": [
-            "project:investigation-question"
+            "project:check-run"
           ]
         },
         {
@@ -748,8 +1953,8 @@
             "occurrence"
           ],
           "requires_payload": [
-            "source",
-            "what_was_observed"
+            "what_was_observed",
+            "effort"
           ],
           "base_kind": "observation",
           "selection": {
@@ -768,11 +1973,155 @@
           ],
           "requires_payload": [
             "claim",
-            "basis"
+            "basis",
+            "invalidated_when",
+            "needs"
           ],
           "base_kind": "claim",
           "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "asserted"
+              }
+            ]
+          },
+          "occupant": "project:finding",
+          "candidates": [
+            "project:finding"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project:status",
+      "name": "status",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": {
+        "group_by": "phase",
+        "order_by": "ordinal",
+        "show_lifecycle_state": true,
+        "show_derived": [
+          "ready",
+          "wave"
+        ],
+        "tally_source_type": "project:check-run",
+        "tally_result_field": "result"
+      },
+      "roles": [
+        {
+          "name": "work",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase",
+            "kind",
+            "effort"
+          ],
+          "base_kind": "task",
+          "selection": {
             "all": []
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project:brief",
+      "name": "brief",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": {
+        "group_by": "subject"
+      },
+      "roles": [
+        {
+          "name": "work",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase",
+            "kind",
+            "effort"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "any_of": [
+                  "planned",
+                  "in_progress"
+                ]
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        },
+        {
+          "name": "acceptance",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "criterion",
+            "method",
+            "effort",
+            "verify_command"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:acceptance",
+          "candidates": [
+            "project:acceptance"
+          ]
+        },
+        {
+          "name": "finding",
+          "requires": [
+            "entity",
+            "epistemic-claim"
+          ],
+          "requires_payload": [
+            "claim",
+            "basis",
+            "invalidated_when",
+            "needs"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "asserted"
+              }
+            ]
           },
           "occupant": "project:finding",
           "candidates": [
@@ -780,23 +2129,383 @@
           ]
         },
         {
-          "name": "failed-attempt",
+          "name": "constraint",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "statement",
+            "applies_to",
+            "effort"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              }
+            ]
+          },
+          "occupant": "project:constraint",
+          "candidates": [
+            "project:constraint"
+          ]
+        },
+        {
+          "name": "position",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "position",
+            "scope"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              },
+              {
+                "field": "payload.status",
+                "not_equals": "closed"
+              }
+            ]
+          },
+          "occupant": "project:current-position",
+          "candidates": [
+            "project:current-position"
+          ]
+        },
+        {
+          "name": "amendment",
+          "requires": [
+            "entity",
+            "occurrence"
+          ],
+          "requires_payload": [
+            "assignment",
+            "effort"
+          ],
+          "base_kind": "instruction",
+          "selection": {
+            "all": []
+          },
+          "occupant": "project:assignment-amendment",
+          "candidates": [
+            "project:assignment-amendment"
+          ]
+        }
+      ]
+    },
+    {
+      "id": "project:dashboard",
+      "name": "dashboard",
+      "namespace": "project",
+      "owns_facts": false,
+      "freshness": "on_demand",
+      "parameters": {
+        "group_by": "effort",
+        "label_fields": true
+      },
+      "roles": [
+        {
+          "name": "goal",
+          "requires": [
+            "entity",
+            "stewarded",
+            "current-claim"
+          ],
+          "requires_payload": [
+            "goal",
+            "scope",
+            "kind"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "active"
+              },
+              {
+                "field": "payload.status",
+                "not_equals": "closed"
+              }
+            ]
+          },
+          "occupant": "project:active-goal",
+          "candidates": [
+            "project:active-goal"
+          ]
+        },
+        {
+          "name": "phase",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "ordinal"
+          ],
+          "base_kind": "phase",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "in_progress"
+              }
+            ]
+          },
+          "occupant": "project:phase",
+          "candidates": [
+            "project:phase"
+          ]
+        },
+        {
+          "name": "blocking-question",
+          "requires": [
+            "entity",
+            "stewarded",
+            "open-question"
+          ],
+          "requires_payload": [
+            "blocking",
+            "scope"
+          ],
+          "base_kind": "question",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "open"
+              },
+              {
+                "field": "payload.blocking",
+                "equals": true
+              }
+            ]
+          },
+          "occupant": "project:continuity-question",
+          "candidates": [
+            "project:continuity-question"
+          ]
+        },
+        {
+          "name": "open-question",
+          "requires": [
+            "entity",
+            "stewarded",
+            "open-question"
+          ],
+          "requires_payload": [
+            "blocking",
+            "scope"
+          ],
+          "base_kind": "question",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "open"
+              },
+              {
+                "field": "payload.blocking",
+                "equals": false
+              }
+            ]
+          },
+          "occupant": "project:continuity-question",
+          "candidates": [
+            "project:continuity-question"
+          ]
+        },
+        {
+          "name": "needs-human",
+          "requires": [
+            "entity",
+            "epistemic-claim"
+          ],
+          "requires_payload": [
+            "claim",
+            "needs"
+          ],
+          "base_kind": "claim",
+          "selection": {
+            "all": [
+              {
+                "field": "payload.needs",
+                "equals": "human"
+              },
+              {
+                "field": "lifecycle_state",
+                "any_of": [
+                  "asserted",
+                  "supported",
+                  "disputed"
+                ]
+              }
+            ]
+          },
+          "occupant": "project:finding",
+          "candidates": [
+            "project:finding"
+          ]
+        },
+        {
+          "name": "unsigned-manual-check",
           "requires": [
             "entity",
             "occurrence",
             "evidence-linked"
           ],
           "requires_payload": [
-            "attempted_action",
-            "retry_when"
+            "criterion_id",
+            "result",
+            "method",
+            "signed_by"
           ],
           "base_kind": "event",
           "selection": {
-            "all": []
+            "all": [
+              {
+                "field": "payload.method",
+                "equals": "manual"
+              },
+              {
+                "field": "payload.signed_by",
+                "equals": ""
+              },
+              {
+                "field": "derived.corrected",
+                "not_equals": true
+              }
+            ]
           },
-          "occupant": "project:failed-attempt",
+          "occupant": "project:check-run",
           "candidates": [
-            "project:failed-attempt"
+            "project:check-run"
+          ]
+        },
+        {
+          "name": "running",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase",
+            "assignee"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "in_progress"
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        },
+        {
+          "name": "ready",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "planned"
+              },
+              {
+                "field": "derived.ready",
+                "equals": true
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        },
+        {
+          "name": "waiting",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "planned"
+              },
+              {
+                "field": "derived.ready",
+                "equals": false
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
+          ]
+        },
+        {
+          "name": "done-recent",
+          "requires": [
+            "entity",
+            "stewarded",
+            "staged-progress"
+          ],
+          "requires_payload": [
+            "title",
+            "phase"
+          ],
+          "base_kind": "task",
+          "selection": {
+            "all": [
+              {
+                "field": "lifecycle_state",
+                "equals": "done"
+              },
+              {
+                "field": "recorded_at",
+                "within": "24h"
+              }
+            ]
+          },
+          "occupant": "project:work-item",
+          "candidates": [
+            "project:work-item"
           ]
         }
       ]
@@ -804,65 +2513,30 @@
   ],
   "bundles": [
     {
-      "id": "project:session-continuity",
-      "name": "session-continuity",
+      "id": "project:specified-work",
+      "name": "specified-work",
       "namespace": "project",
       "optional": true,
       "records": [
-        "project:current-position",
-        "project:active-commitment",
-        "project:continuity-question",
-        "project:active-goal",
-        "project:next-action"
+        "project:work-item",
+        "project:acceptance"
       ],
       "relationships": [],
       "capture": {
         "trigger": [
-          "session_boundary"
-        ]
-      }
-    },
-    {
-      "id": "project:abandoned-path",
-      "name": "abandoned-path",
-      "namespace": "project",
-      "optional": true,
-      "records": [
-        "project:failed-attempt",
-        "project:investigation-observation"
-      ],
-      "relationships": [
-        {
-          "from": "project:failed-attempt",
-          "to": "project:investigation-observation",
-          "type": "informed_by"
-        }
-      ],
-      "capture": {
-        "trigger": [
-          "attempt_abandoned"
-        ]
-      }
-    },
-    {
-      "id": "project:concluded-investigation",
-      "name": "concluded-investigation",
-      "namespace": "project",
-      "optional": true,
-      "records": [
-        "project:investigation-question",
-        "project:investigation-observation",
-        "project:finding"
-      ],
-      "relationships": [],
-      "capture": {
-        "trigger": [
-          "investigation_concluded"
+          "explicit_request"
         ]
       }
     }
   ],
   "experimental_candidates": [],
-  "source_revisions": {},
-  "gaps": []
+  "source_revisions": {
+    "code": "git_commit"
+  },
+  "gaps": [
+    {
+      "need": "session-focus record; encoded as a skill-named subject, views grouped by subject/effort, and a refuse-to-supersede-other-subjects rule"
+    },
+    "This git repo is adaptive-artifacts; project-design.project is se-workflow after 2026-10-14 full-swap so se-workflow skills (discuss/plan/execute) run here. Prior continuity store archived under .artifacts/archive/continuity-2026-10-14/."
+  ]
 }

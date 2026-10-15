@@ -1,20 +1,15 @@
 # Project Handoff
 
 > Derived view — not authoritative. Edit underlying records, not this file.
-> Store state: sha256:86a7a1861a7c1b0114e663484108a7ac9b130dff599b9c5ec409535fd045da4c
+> Store state: sha256:b234cb9370aee2eb113aabfe6f64392686280a04498d62542c1869a20320211c
 
-## repo
+## aa-cli-ergonomics
 
 ### Goal
-- **adaptive-artifacts**: Redesign adaptive-artifacts around a generic, backend-neutral model for planning, source-of-truth records, agent continuity, and other durable knowledge.; repo _(id: [rec-df82d483-e844-44b1-9b8b-2d419ac642b0](/home/ayin/adaptive-artifacts-views/.artifacts/records/project__active-goal/rec-df82d483-e844-44b1-9b8b-2d419ac642b0.md))_
+- **aa-cli-ergonomics**: Ship bin/aa CLI alias and the six trace-driven CLI/runtime optimizations so agents spend less round-trips on type names, revisions, views, and store discovery.; effort; deliver _(id: [rec-bccad4cf-099c-4278-9907-4457755c0244](.artifacts/records/project__active-goal/rec-bccad4cf-099c-4278-9907-4457755c0244.md))_
 
 ### Position
-- **adaptive-artifacts**: Unpublished experimental 0.1.0. Catalog 0.6.0 marked experimental. Live protocol is AGENTS.md (CLAUDE.md + artifacts.mdc point at it). DESIGN.md moved to design/DESIGN.md (rationale only). Local plugin synced; CLI on PATH; scratch dogfood previously passed. Marketplace publish and cse151b materialize still wait. Reload Cursor to load plugin skills/hooks.; repo _(id: [rec-e4aba887-87aa-46c5-a599-4e6371ecd997](/home/ayin/adaptive-artifacts-views/.artifacts/records/project__current-position/rec-e4aba887-87aa-46c5-a599-4e6371ecd997.md))_
+- **aa-cli-ergonomics**: aa-cli-surface landed on master. Goal met pending store commit + optional sync-plugin.; effort _(id: [rec-3246d850-b721-4404-b371-6e16a5906bc2](.artifacts/records/project__current-position/rec-3246d850-b721-4404-b371-6e16a5906bc2.md))_
 
-### Next
-- **adaptive-artifacts**: Reload Cursor so skills/hooks come from the local 0.1.0 experimental plugin. Then a real IDE session here or in ~/aa-plugin-dogfood. Marketplace publish and cse151b rematerialize stay parked. Re-run scripts/sync-plugin.sh after source edits.; repo _(id: [rec-4313c4ad-0f33-4b9d-a298-fe46f403f74f](/home/ayin/adaptive-artifacts-views/.artifacts/records/project__next-action/rec-4313c4ad-0f33-4b9d-a298-fe46f403f74f.md))_
-
-## runtime: tools/artifacts.py, tools/runtime
-
-### Commitment
-- **watch-dashboard-runtime**: runtime: tools/artifacts.py, tools/runtime _(id: [rec-5756e366-2838-49c2-99f0-d90a1a97ae0e](/home/ayin/adaptive-artifacts-views/.artifacts/records/project__active-commitment/rec-5756e366-2838-49c2-99f0-d90a1a97ae0e.md))_
+### Needs Human
+- **verify-aa-cli-surface**: verify-aa-cli-surface closed done with tdd pass lacking red-first for some criteria; human _(id: [rec-026f8099-bcc9-4fb8-95b4-62f1c57c91e7](.artifacts/records/project__finding/rec-026f8099-bcc9-4fb8-95b4-62f1c57c91e7.md))_
