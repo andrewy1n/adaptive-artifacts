@@ -62,16 +62,17 @@ python3 -m pytest tools/runtime/tests -q
 Records stay authoritative. Do not hand-edit a record file to make a
 test pass. Views are regenerated.
 
-## se-workflow
+## affidavit
 
-`~/se-workflow` is a separate plugin. It consumes this CLI and ships
-its own contract at `contract/project-design.json`. Its tests subprocess
-this repo's `tools/artifacts.py` (`ADAPTIVE_ARTIFACTS_ROOT` overrides
-the default `~/adaptive-artifacts`). Keep the public CLI's observable
-behavior stable for that suite.
+`~/affidavit` (GitHub `andrewy1n/affidavit`; CLI `aff`) is a separate
+plugin. It consumes this CLI and ships its own contract at
+`contract/project-design.json`. Its tests subprocess this repo's
+`tools/artifacts.py` (`ADAPTIVE_ARTIFACTS_ROOT` overrides the default
+`~/adaptive-artifacts`). Keep the public CLI's observable behavior
+stable for that suite.
 
-A se-workflow task that needs a catalog, runtime, hook, or skill change
+An affidavit task that needs a catalog, runtime, hook, or skill change
 here is an extension amendment. Capture it in this store and wait for
-human approval. Do not apply it from the se-workflow session. If
-se-workflow's own contract can express the need, the edit belongs in
+human approval. Do not apply it from the affidavit session. If
+affidavit's own contract can express the need, the edit belongs in
 that repo, not here.
