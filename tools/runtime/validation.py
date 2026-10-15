@@ -455,6 +455,7 @@ def validate_immutability(store_root: Path, errors: list[str]) -> None:
         return
     meta_rel = (rel / "meta.json").as_posix()
     records_rel = (rel / "records").as_posix()
+    views_rel = (rel / "views").as_posix() + "/"
     result = _run_git(
         [
             "git",
@@ -478,6 +479,8 @@ def validate_immutability(store_root: Path, errors: list[str]) -> None:
         if status.startswith("A"):
             continue
         offending = parts[1] if len(parts) > 1 else line
+        if offending.startswith(views_rel):
+            continue
         # A contract swap rewrites meta.json and the resolved contract together.
         # Both are sanctioned only while the pair stays self-consistent.
         pinned = {meta_rel, _meta_contract_rel(store_root, repo_root)}

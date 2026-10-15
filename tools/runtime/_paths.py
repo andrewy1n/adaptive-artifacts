@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
 from pathlib import Path
 
 RUNTIME_ROOT = Path(__file__).resolve().parent
@@ -59,7 +60,27 @@ def default_store_path(root: Path | None = None) -> Path:
     if env:
         return Path(env)
     base = root if root is not None else Path.cwd()
-    return base / DEFAULT_STORE_NAME
+    local = base / DEFAULT_STORE_NAME
+    if local.exists():
+        return local
+    try:
+        common = subprocess.run(
+            ["git", "-C", str(base), "rev-parse", "--git-common-dir"],
+            capture_output=True,
+            text=True,
+        )
+    except OSError:
+        return local
+    if common.returncode != 0:
+        return local
+    common_dir = Path(common.stdout.strip())
+    if not common_dir.is_absolute():
+        common_dir = (base / common_dir).resolve()
+    if common_dir.name == ".git":
+        main_store = common_dir.parent / DEFAULT_STORE_NAME
+        if main_store.exists():
+            return main_store
+    return local
 
 
 def project_root_from_store(store: Path) -> Path:

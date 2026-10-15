@@ -116,6 +116,20 @@ class ListQueryTests(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertEqual(out["records"][0]["id"], self.observation["id"])
 
+    def test_exact_subject_excludes_prefix_matches(self):
+        out = self._list("--subject", "retry", "--exact-subject")
+        self.assertEqual(out["count"], 0)
+
+    def test_where_top_level_subject_and_lifecycle_state(self):
+        out = self._list(
+            "--where",
+            "subject=retry semantics",
+            "--where",
+            "lifecycle_state=asserted",
+        )
+        self.assertEqual(out["count"], 1)
+        self.assertEqual(out["records"][0]["id"], self.retry_finding["id"])
+
     def test_grep_hits_body_text(self):
         out = self._list("--grep", "keepalive")
         self.assertEqual(out["count"], 1)
@@ -172,6 +186,29 @@ class ListQueryTests(unittest.TestCase):
         self.assertEqual(out["count"], 1)
         self.assertIn("body", out["records"][0])
         self.assertIn("keepalive", out["records"][0]["body"])
+
+    def test_order_by_subject(self):
+        out = self._list("--order-by", "subject")
+        subjects = [record["subject"] for record in out["records"]]
+        self.assertEqual(subjects, sorted(subjects))
+
+    def test_fields_and_ndjson(self):
+        r = run_cli(
+            "list",
+            "--type",
+            "finding",
+            "--order-by",
+            "subject",
+            "--fields",
+            "id,subject",
+            "--format",
+            "ndjson",
+            store=self.store,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        rows = [json.loads(line) for line in r.stdout.splitlines()]
+        self.assertEqual([row["subject"] for row in rows], ["retry semantics", "retry timeout"])
+        self.assertEqual(set(rows[0]), {"id", "subject"})
 
     def test_invalid_where_flag_is_a_clean_error(self):
         r = run_cli("list", "--where", "not-a-payload-field=x", store=self.store)

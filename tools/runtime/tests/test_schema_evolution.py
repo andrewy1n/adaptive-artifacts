@@ -23,6 +23,9 @@ from support import git, run_cli  # noqa: E402
 from contract import contract_digest  # noqa: E402
 
 SEED = Path("/home/ayin/aa-scratch/seed-artifacts")
+_SKIP_NO_SEED = unittest.skipUnless(
+    SEED.is_dir(), f"seed fixture missing: {SEED}"
+)
 
 
 def _load_json(path: Path) -> dict:
@@ -33,6 +36,7 @@ def _dump_json(path: Path, data: dict) -> None:
     path.write_text(json.dumps(data, indent=2) + "\n")
 
 
+@_SKIP_NO_SEED
 class SchemaEvolutionTests(unittest.TestCase):
     """Reproduces, against the real 717-record fixture, the failure where
     adding `phase` to `current-position`'s payload invalidates the two

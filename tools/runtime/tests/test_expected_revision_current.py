@@ -65,6 +65,36 @@ class ExpectedRevisionCurrentTests(unittest.TestCase):
         body = load_json(r.stdout)
         self.assertEqual(body["record"]["lifecycle_state"], "supported")
 
+    def test_expected_revision_current_is_the_update_default(self):
+        finding = self._create("project:finding", "default revision", sample_finding_payload())
+        r = run_cli(
+            "update",
+            "--id",
+            finding["id"],
+            "--transition",
+            "supported",
+            store=self.store,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(load_json(r.stdout)["record"]["lifecycle_state"], "supported")
+
+    def test_type_and_subject_target_one_active_record(self):
+        record = self._create(
+            "project:current-position", "subject target", json.loads(sample_position_payload())
+        )
+        r = run_cli(
+            "update",
+            "--type",
+            "current-position",
+            "--subject",
+            record["subject"],
+            "-p",
+            "position=updated by subject",
+            store=self.store,
+        )
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(load_json(r.stdout)["record"]["payload"]["position"], "updated by subject")
+
     def test_update_with_exact_stale_revision_still_rejected(self):
         finding = self._create("project:finding", "retry semantics", sample_finding_payload())
         r = run_cli(

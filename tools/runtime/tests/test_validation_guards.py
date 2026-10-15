@@ -81,6 +81,16 @@ class ImmutabilityGateTests(unittest.TestCase):
         validate_immutability(self.store, errors)
         self.assertEqual(errors, [])
 
+    def test_views_exempt_from_immutability(self):
+        view = _write(self.store / "views" / "handoff.md", "old view\n")
+        git(self.repo, "add", "-A")
+        result = git(self.repo, "commit", "-qm", "add derived view")
+        self.assertEqual(result.returncode, 0, result.stderr)
+        view.write_text("new derived view\n")
+        errors: list[str] = []
+        validate_immutability(self.store, errors)
+        self.assertEqual(errors, [])
+
     def test_reports_every_offending_path_not_just_first(self):
         self._commit_record()
         second = _write(self.store / "records" / "project__thing" / "rec-2.json")

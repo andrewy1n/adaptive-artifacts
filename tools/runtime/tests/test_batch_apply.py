@@ -92,6 +92,23 @@ class BatchApplyTests(unittest.TestCase):
         listed = run_cli("list", "--type", "project:next-action", store=self.store)
         self.assertEqual(load_json(listed.stdout)["count"], 2)
 
+    def test_apply_file_alias(self):
+        path = self.repo / "ops.ndjson"
+        path.write_text(
+            json.dumps(
+                {
+                    "op": "create",
+                    "type": "next-action",
+                    "subject": "from-file",
+                    "payload": {"next": "apply it", "scope": "design/runtime"},
+                }
+            )
+            + "\n"
+        )
+        result = run_cli("apply", "--file", str(path), store=self.store)
+        self.assertEqual(result.returncode, 0, result.stdout + result.stderr)
+        self.assertEqual(load_json(result.stdout)["applied"], 1)
+
 
 if __name__ == "__main__":
     unittest.main()

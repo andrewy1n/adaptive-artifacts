@@ -78,6 +78,41 @@ class GetWithoutTypeTests(unittest.TestCase):
         body = load_json(r.stdout)
         self.assertEqual(body["error"], "not_found")
 
+    def test_get_field_and_body_only(self):
+        field = run_cli(
+            "get",
+            "--id",
+            self.record["id"],
+            "--field",
+            "payload.position",
+            store=self.store,
+        )
+        self.assertEqual(field.returncode, 0, field.stdout + field.stderr)
+        self.assertEqual(load_json(field.stdout), "building runtime")
+        full = run_cli("get", "--id", self.record["id"], "--full", store=self.store)
+        self.assertEqual(full.returncode, 0, full.stdout + full.stderr)
+        body = run_cli("get", "--id", self.record["id"], "--body-only", store=self.store)
+        self.assertEqual(body.returncode, 0, body.stdout + body.stderr)
+        self.assertEqual(body.stdout.strip(), "")
+
+    def test_create_payload_file_and_set_merge(self):
+        payload_file = self.repo / "payload.json"
+        payload_file.write_text('{"position": "from file", "scope": "design/runtime"}')
+        created = run_cli(
+            "create",
+            "--type",
+            "current-position",
+            "--subject",
+            "payload merge",
+            "--payload-file",
+            str(payload_file),
+            "-p",
+            "position=from set",
+            store=self.store,
+        )
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        self.assertEqual(load_json(created.stdout)["record"]["payload"]["position"], "from set")
+
 
 if __name__ == "__main__":
     unittest.main()

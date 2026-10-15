@@ -61,6 +61,39 @@ class TypeShorthandTests(unittest.TestCase):
         body = load_json(r.stdout)
         self.assertEqual(body["count"], 1)
 
+    def test_short_name_on_create_and_update(self):
+        created = run_cli(
+            "create",
+            "--type",
+            "finding",
+            "--subject",
+            "short mutation",
+            "--payload",
+            json.dumps(
+                {
+                    "claim": "short names work",
+                    "basis": "CLI test",
+                    "invalidated_when": "test fails",
+                }
+            ),
+            store=self.store,
+        )
+        self.assertEqual(created.returncode, 0, created.stdout + created.stderr)
+        record = load_json(created.stdout)["record"]
+        self.assertEqual(record["record_type"], "project:finding")
+        updated = run_cli(
+            "update",
+            "--type",
+            "finding",
+            "--id",
+            record["id"],
+            "--transition",
+            "supported",
+            store=self.store,
+        )
+        self.assertEqual(updated.returncode, 0, updated.stdout + updated.stderr)
+        self.assertEqual(load_json(updated.stdout)["record"]["lifecycle_state"], "supported")
+
 
 if __name__ == "__main__":
     unittest.main()
